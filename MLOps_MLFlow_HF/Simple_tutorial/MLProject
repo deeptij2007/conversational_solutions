@@ -1,0 +1,15 @@
+name: Wine model
+python_env: python_env.yaml
+entry_points:
+    main:
+        parameters:
+            alpha: {type: float, default: 0.5}
+            l1_ratio: {type: float, default: 0.5}
+        command: "python train.py {alpha} {l1_ratio}"
+        artifacts:
+            - path: model
+              type: mlflow.sklearn
+              flavor: mlflow.sklearn
+              model_path: model
+              registered_model_name: ElasticnetWineModel
+              
