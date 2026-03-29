@@ -1,94 +1,111 @@
 """
-LangGraph ReAct agent for the Belair quote assistant.
+LangGraph ReAct agent — token-efficient design.
 
-Design:
-  - Uses create_react_agent (standard ReAct loop: agent → tools → agent → …)
-  - AsyncSqliteSaver checkpointer: async-safe, full conversation history persisted
-    per thread_id (= session_id)
-  - System prompt enforces strict grounding: only belair_quote_form.json, no invention
-  - Session ID is embedded in user messages so a single shared graph serves all sessions
-  - Graph is built once at startup (via FastAPI lifespan) and stored in app.state
+Token reduction strategy:
+  1. Form schema embedded as a compact text table in the system prompt
+     → removes the expensive get_form_schema tool call on every turn.
+  2. get_current_state returns only {field_id: value} + next_field_id
+     → was returning full question objects.
+  3. pre_model_hook trims conversation history to the last 12 messages
+     → bounds context growth for long sessions.
+  4. max_tokens capped at 512 (responses are short by design).
 """
 from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import SystemMessage
 from langgraph.prebuilt import create_react_agent
 
 from agent.tools import (
     check_step_complete,
     get_current_state,
-    get_form_schema,
     get_question_info,
     navigate_back,
     update_form_answer,
 )
 
+# ── Compact schema table (replaces get_form_schema tool call) ─────────────────
+# Field format:  field_id | label | type | options/note
+
+_SCHEMA_TABLE = """\
+STEP 1 — Vehicle Information
+  vehicle_year    | Year                        | select  | 1990–2026
+  vehicle_make    | Make                        | text    |
+  vehicle_model   | Model                       | text    |
+
+STEP 2 — Vehicle Details
+  commute_to_work_school | Commute to work/school?     | radio  | No, Yes
+  yearly_kilometres      | Yearly kilometres           | select | ranges (<5k … >25k km)
+  car_condition          | Condition when acquired     | radio  | New, Used, Demo
+  anti_theft_system      | Anti-theft system?          | radio  | No, Yes
+
+STEP 3 — Driver Information
+  first_name        | First name                  | text   | as on licence
+  last_name         | Last name                   | text   | as on licence
+  gender_identity   | Gender identity             | radio  | Male, Female, X
+  date_of_birth     | Date of birth               | date   | MM/DD/YYYY
+  age_first_licence | Age at first driver licence | number | approximate ok
+
+STEP 4 — Quote & Confirmation
+  accidents_tickets    | Accidents/tickets (6 yrs)?        | radio | None, Yes
+  lapse_in_coverage    | Lapse in coverage (≥6 months)?    | radio | No, Yes
+  education_discount   | University degree?                | radio | No, Yes
+  soft_credit_check    | Consent to soft credit check?     | radio | No, Yes
+  email                | Email address                     | email |
+  business_use         | Business use?                     | radio | No, Yes
+  safe_driving_program | Enroll in safe driving program?   | radio | No, Yes
+  home_insurance_bundle| Add home insurance bundle?        | radio | No, Yes
+"""
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """\
-You are the Belair Direct car insurance quote assistant for Quebec province.
-You assist clients filling a quote form for 1 car and 1 driver.
+SYSTEM_PROMPT = f"""\
+You are the Belair Direct car insurance quote assistant (Quebec, 1 car / 1 driver).
 
-━━━ CORE BEHAVIOUR — READ CAREFULLY ━━━
+━━━ FORM SCHEMA ━━━
+{_SCHEMA_TABLE}
+For tooltip details on any field call get_question_info(field_id).
 
-You are a REACTIVE assistant. You do NOT proactively guide or ask questions
-unless the client explicitly speaks to you first.
+━━━ BEHAVIOUR ━━━
+You are REACTIVE — speak only when the client addresses you.
+The client fills the form themselves; you observe silently unless asked.
 
-The client can fill the form themselves at any time without your involvement.
-When they do, you silently stay aware of the state — but you say nothing.
+When the client speaks to you:
+① Question about a field → answer using get_question_info only. No invented facts.
+② "Fill / explain [field]" → ask for the value, save with update_form_answer, then STOP.
+③ "Guide me through the form" → one question at a time in schema order.
+   After each step completes: summarise answers, ask if they want to continue.
+   Only advance with explicit consent ("yes", "continue", "next").
+④ "Go back / change [field]" → call navigate_back, show saved value, ask for new one.
+⑤ First load greeting → one sentence: "Fill the form directly or ask me anything."
+   Do NOT ask questions.
+⑥ Return load greeting → one sentence: welcome back + how many fields are filled.
+   Do NOT ask questions.
 
-You speak only when the client addresses you. Specifically:
+Rules:
+- Only use info from get_question_info or this schema. Never invent coverage details.
+- Decline off-topic questions; redirect to the quote.
+- Never repeat options already visible in the form.
+- Keep responses short.
 
-  ① If the client asks you a QUESTION about the form
-      → Answer it using only the information from get_form_schema /
-        get_question_info. Never invent facts.
-
-  ② If the client asks you to FILL or EXPLAIN a field
-      → Ask for the needed value (one question), save it via
-        update_form_answer, then STOP and wait. Do not continue
-        to the next field unless asked again.
-
-  ③ If the client asks you to GUIDE them through the whole form
-      → Ask one question at a time in schema order.
-        After each step is complete, briefly confirm what was filled
-        and ask if they would like to continue to the next section.
-        Only proceed with explicit consent ("yes", "continue", "next").
-
-  ④ If the client wants to GO BACK and change an answer
-      → Call navigate_back, show the current saved value, and ask
-        what they'd like to change it to.
-
-  ⑤ On FIRST LOAD (the system message says "just opened the form")
-      → Give a single brief welcome: tell them they can fill the form
-        directly or ask you anything about the quote. Do NOT ask questions.
-
-  ⑥ On RETURN LOAD (the system message says "returned")
-      → Give a single brief welcome back. Mention how many fields are
-        already filled. Do NOT ask questions.
-
-━━━ STRICT CONTENT RULES ━━━
-1. ONLY use information returned by your tools. NEVER invent insurance facts,
-   coverage amounts, discounts, or policy terms.
-2. If the client asks something unrelated to this insurance quote, politely
-   decline and offer to help with the form instead.
-3. When explaining a field, always call get_question_info and quote the
-   related_info directly — do not paraphrase from memory.
-4. If unsure what the client means, ask a clarifying question — never guess.
-
-━━━ SESSION ID ━━━
-The client's session_id is embedded at the start of every message:
-  [SESSION_ID: <uuid>]
-Extract it and pass it to every tool call. Never mention it to the client.
-
-━━━ TONE ━━━
-- Warm, concise, professional
-- Do not repeat field options already shown in the form
-- Never volunteer information the client didn't ask for
-- Do not say "Great!" or similar filler before every response
+SESSION ID is at the start of every message as [SESSION_ID: <uuid>].
+Extract it for every tool call. Never show it to the client.
 """
+
+# ── Message trimmer (pre_model_hook) ─────────────────────────────────────────
+
+_MAX_HISTORY = 12  # keep last N messages before the model call
+
+
+def _trim_messages(state: dict) -> dict:
+    """Drop oldest messages to keep context small. System prompt is added by create_react_agent."""
+    msgs = state["messages"]
+    if len(msgs) > _MAX_HISTORY:
+        msgs = msgs[-_MAX_HISTORY:]
+    return {"llm_input_messages": msgs}
+
 
 # ── Graph factory ─────────────────────────────────────────────────────────────
 
 _TOOLS = [
-    get_form_schema,
     get_current_state,
     update_form_answer,
     navigate_back,
@@ -98,16 +115,12 @@ _TOOLS = [
 
 
 def build_graph(checkpointer):
-    """
-    Build and return the compiled LangGraph ReAct agent.
-    Must be called with an already-initialised AsyncSqliteSaver checkpointer
-    (created inside an async context in FastAPI lifespan).
-    """
-    llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0, max_tokens=1024)
+    llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0, max_tokens=512)
 
     return create_react_agent(
         llm,
         _TOOLS,
         prompt=SYSTEM_PROMPT,
+        pre_model_hook=_trim_messages,
         checkpointer=checkpointer,
     )

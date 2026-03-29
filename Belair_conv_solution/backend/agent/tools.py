@@ -56,42 +56,28 @@ FIELD_INDEX: dict[str, dict] = {q["id"]: q for q in ALL_QUESTIONS}
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
-@tool
-def get_form_schema() -> str:
-    """
-    Return the complete Belair Direct insurance quote form schema.
-    Contains all steps, questions, field types, options, and related_info/tooltip text.
-    Always call this first to understand what to ask and in what order.
-    """
-    return json.dumps(FORM_SCHEMA, ensure_ascii=False, indent=2)
-
 
 @tool
 def get_current_state(session_id: str) -> str:
     """
-    Return the current form state for this session:
-    - answers filled so far (field_id → value)
-    - the next unanswered question
-    - current step and field index
+    Return a compact snapshot of the current form state:
+    - answers: {field_id: value} for all filled fields
+    - next_field_id: the next unanswered field, or null if complete
+    - answered / total counts
 
     Args:
         session_id: The session identifier (UUID string).
     """
     db.get_or_create_session(session_id)
     answers = db.get_form_answers(session_id)
-    position = db.get_position(session_id)
-
-    # Find the next unanswered question in order
     next_q = next((q for q in ALL_QUESTIONS if q["id"] not in answers), None)
 
     return json.dumps(
         {
-            "current_step": position["current_step"],
-            "current_field_idx": position["current_field_idx"],
             "answers": answers,
-            "next_unanswered_question": next_q,
-            "total_questions": len(ALL_QUESTIONS),
-            "answered_count": len(answers),
+            "next_field_id": next_q["id"] if next_q else None,
+            "answered": len(answers),
+            "total": len(ALL_QUESTIONS),
         },
         ensure_ascii=False,
     )
