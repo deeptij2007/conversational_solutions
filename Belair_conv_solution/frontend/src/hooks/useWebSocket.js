@@ -32,21 +32,28 @@ export function useWebSocket(sessionId) {
 
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data)
-        setTyping(false)
 
         switch (data.type) {
           case 'init':
           case 'message':
+            // Agent responded — show chat bubble + sync form
+            setTyping(false)
             addMessage({ role: 'assistant', content: data.message.content })
             applyFormState(data.form_state)
             break
 
-          // Agent explicitly pushed a single field update
+          case 'state_update':
+            // Silent form sync after a direct field edit — no chat bubble
+            applyFormState(data.form_state)
+            break
+
+          // Agent explicitly pushed a single field update (e.g. via tool)
           case 'form_update':
             setAnswer(data.field_id, data.value, 'agent')
             break
 
           case 'error':
+            setTyping(false)
             addMessage({ role: 'system', content: `⚠️ ${data.detail}` })
             break
 

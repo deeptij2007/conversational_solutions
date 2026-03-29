@@ -10,12 +10,20 @@ WebSocket message protocol
 ──────────────────────────
 Client → Server:
   { "type": "message",   "content": "..." }                    user chat message
-  { "type": "form_edit", "field_id": "...", "value": "..." }   direct field edit
+  { "type": "form_edit", "field_id": "...", "value": "..." }   direct field edit (silent)
 
 Server → Client:
-  { "type": "init",    "message": {...}, "form_state": {...} }
-  { "type": "message", "message": {...}, "form_state": {...} }
-  { "type": "error",   "detail": "..." }
+  { "type": "init",         "message": {...}, "form_state": {...} }
+  { "type": "message",      "message": {...}, "form_state": {...} }
+  { "type": "state_update", "form_state": {...} }   ← silent form sync (no chat bubble)
+  { "type": "error",        "detail": "..." }
+
+Behaviour contract:
+  - form_edit is SILENT: backend saves to DB and returns state_update only.
+    The agent is NOT invoked. No chat bubble is shown.
+  - message triggers the agent. The agent responds only when the client
+    addresses it. It never proactively asks questions when the client
+    is self-filling the form.
 """
 import uuid
 from contextlib import asynccontextmanager
@@ -84,12 +92,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     try:
         # ── Initial greeting ──────────────────────────────────────────────────
+        # Brief, non-intrusive intro — agent does NOT start asking questions.
         greeting = (
             f"[SESSION_ID: {session_id}] "
             + (
-                "Hello! I'm starting my Belair Direct car insurance quote."
+                "The client has just opened the quote form for the first time."
                 if is_new
-                else "Hello! I'm returning to continue my quote where I left off."
+                else "The client has returned to continue their quote."
             )
         )
         result = await graph.ainvoke({"messages": [HumanMessage(content=greeting)]}, config)
@@ -124,6 +133,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 })
 
             elif msg_type == "form_edit":
+                # Client filled a field directly — save silently, NO agent invocation.
+                # The agent stays aware via get_current_state when next addressed.
                 field_id = data.get("field_id", "")
                 value = data.get("value", "")
                 if not field_id:
@@ -131,20 +142,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
                 db.update_answer(session_id, field_id, value)
 
-                result = await graph.ainvoke(
-                    {"messages": [HumanMessage(
-                        content=(
-                            f"[SESSION_ID: {session_id}] "
-                            f"I just updated '{field_id}' directly in the form to '{value}'."
-                        )
-                    )]},
-                    config,
-                )
-                assistant_text = result["messages"][-1].content
-
+                # Return updated form state only — no chat bubble.
                 await websocket.send_json({
-                    "type": "message",
-                    "message": {"role": "assistant", "content": assistant_text},
+                    "type": "state_update",
                     "form_state": db.get_full_state(session_id),
                 })
 

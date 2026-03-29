@@ -83,9 +83,9 @@ const useFormStore = create((set, get) => ({
    * Send a chat message over WebSocket and optimistically add it to the log.
    */
   sendMessage: (content) => {
-    const { ws, sessionId } = get()
+    const { ws } = get()
     if (!content.trim() || ws?.readyState !== WebSocket.OPEN) return
-
+    // Show typing indicator only for chat messages (not silent form edits)
     get().addMessage({ role: 'user', content })
     set({ isTyping: true })
     ws.send(JSON.stringify({ type: 'message', content }))
