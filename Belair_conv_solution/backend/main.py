@@ -35,7 +35,9 @@ from agent.graph import build_graph
 from db import FormDatabase
 
 _DB_PATH = str(Path(__file__).parent / "belair.db")
-_FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+# Dev: Vite serves on :3000 and proxies /api + /ws to here.
+# Prod: `npm run build` outputs to backend/static — served below.
+_STATIC_DIR = Path(__file__).parent / "static"
 
 db = FormDatabase(_DB_PATH)
 
@@ -155,11 +157,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             pass
 
 
-# ── Static frontend ───────────────────────────────────────────────────────────
+# ── Static frontend (production build) ───────────────────────────────────────
+# In dev, the Vite dev server (port 3000) proxies /api and /ws to here.
+# In prod, `npm run build` writes to backend/static — served here.
 
-@app.get("/")
-def serve_index():
-    return FileResponse(_FRONTEND_DIR / "index.html")
+if _STATIC_DIR.exists():
+    @app.get("/")
+    def serve_index():
+        return FileResponse(_STATIC_DIR / "index.html")
 
-
-app.mount("/static", StaticFiles(directory=str(_FRONTEND_DIR)), name="static")
+    app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="spa")

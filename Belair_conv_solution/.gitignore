@@ -24,3 +24,9 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# React / Node
+node_modules/
+frontend/node_modules/
+backend/static/
+dist/
