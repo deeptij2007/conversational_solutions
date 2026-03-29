@@ -1,144 +1,253 @@
 # PRD: Belair Direct Conversational Insurance Quote App
 
+> **Last updated:** 2026-03-28 — reflects all shipped iterations
+> **Branch:** `conv_solutions_dev` → `https://github.com/deeptij2007/conversational_solutions`
+
+---
+
 ## Overview
-A lightweight web application that transforms the Belair Direct car insurance quote form (Quebec, 1 car / 1 driver) into a conversational experience. A chat assistant and the actual form live side-by-side, always in sync. The assistant strictly follows the Belair form flow and only uses information from `belair_quote_form.json`.
+
+A web application that makes the Belair Direct car insurance quote form (Quebec, 1 car / 1 driver) conversational. A chat assistant and the live form sit side-by-side, always in sync. The client can interact with either panel at any time — the agent observes silently when the client self-fills and only speaks when spoken to.
 
 ---
 
 ## Goals
-- Make the quoting process feel guided and human, not bureaucratic
-- Never let the client get lost: the form always reflects the current conversation state
-- Persist all answers across browser refreshes / session restores
-- Client retains full control: they decide when to proceed to the next step
-- Agent answers questions using only Belair-provided content (no hallucination)
+
+| Goal | Status |
+|------|--------|
+| Form and chat always visible, always in sync | ✅ Shipped |
+| Client can fill the form directly without bot interference | ✅ Shipped |
+| Client can ask the bot anything about the form | ✅ Shipped |
+| Client can ask the bot to fill or guide them | ✅ Shipped |
+| Answers persist across refreshes / session restores | ✅ Shipped |
+| Back-navigation to change previous answers | ✅ Shipped |
+| Agent answers using only Belair-sourced content | ✅ Shipped |
+| No hallucination — grounded on `belair_quote_form.json` | ✅ Shipped |
 
 ---
 
 ## User Stories
-| As a…       | I want to…                                             | So that…                                     |
-|-------------|--------------------------------------------------------|----------------------------------------------|
-| Client      | Chat naturally instead of reading a long form          | I understand what's being asked of me        |
-| Client      | See my answers reflected live in the form panel        | I can verify what I've entered               |
-| Client      | Go back and change a previous answer                   | I don't have to restart from scratch         |
-| Client      | Ask what a question means                              | I get accurate Belair-sourced explanations   |
-| Client      | Decide when to move to the next step                   | I feel in control of the process             |
-| Client      | Refresh the page and continue where I left off         | I don't lose my progress                     |
+
+| As a… | I want to… | So that… |
+|--------|-----------|----------|
+| Client | Fill the form directly without the bot asking questions | I can move at my own pace |
+| Client | Ask the bot what a field means | I get accurate Belair-sourced explanations |
+| Client | Ask the bot to fill a specific field | It guides me on exactly what to enter |
+| Client | Ask the bot to guide me through the whole form | I get a fully conversational experience |
+| Client | See my chat answers reflected live in the form | I can verify what was saved |
+| Client | See my direct form edits acknowledged by the bot when I ask | Both panels stay in sync |
+| Client | Go back and change a previous answer | I don't have to restart |
+| Client | Refresh the page and continue where I left off | I don't lose progress |
+| Client | See the full form at all times, even with a long chat | I always know where I am in the quote |
 
 ---
 
-## Architecture Options
+## Architecture Options Considered
 
-### Option A: Single-process, vanilla frontend (CHOSEN)
+### Option A: Single-process, vanilla JS frontend *(initial prototype)*
 ```
-Browser (HTML/JS)  ←── WebSocket ──→  FastAPI + LangGraph (Python)
-                                             │
-                                       SQLite (sessions + answers)
-                                       LangGraph SqliteSaver (conversation memory)
+Browser (HTML/JS) ←── WebSocket ──→ FastAPI + LangGraph + SQLite
 ```
-**Pros:** No build step, single process, easy to run, truly lightweight
-**Cons:** Vanilla JS is more verbose than React for complex UIs
+**Verdict:** Built first; replaced — vanilla JS too verbose for reactive bidirectional state.
 
-### Option B: React frontend + FastAPI backend
+### Option B: React + Vite + FastAPI *(CHOSEN — current)*
 ```
-React (Vite) ←── REST + WebSocket ──→ FastAPI + LangGraph
-                                             │
-                                         PostgreSQL / SQLite
+React (Vite/Zustand) ←── WebSocket ──→ FastAPI + LangGraph + SQLite
 ```
-**Pros:** Better component model, easier state management
-**Cons:** Requires Node.js, build step, more moving parts
+**Verdict:** Chosen for clean component model, Zustand as shared state bus, Vite proxy in dev.
 
-### Option C: Full-stack Next.js + Python microservice
+### Option C: Next.js + Python microservice
 ```
-Next.js (SSR) ←── REST ──→ FastAPI Agent Service ──→ Redis (state) + PG (history)
+Next.js (SSR) ←── REST ──→ FastAPI Agent Service ──→ Redis + Postgres
 ```
-**Pros:** Best scalability, SSR for SEO
-**Cons:** Heavyweight, over-engineered for this use case
+**Verdict:** Over-engineered for this use case.
 
 ---
 
-## Chosen Architecture (Option A) — Design Details
+## Current Architecture (Option B)
 
-### Frontend (Single HTML file)
-- Pure HTML + vanilla JS (ES modules) + CSS Grid layout
-- No build step — served directly by FastAPI as a static file
-- WebSocket client for real-time bidirectional sync
-- Session ID stored in `localStorage` for persistence across refreshes
+### Frontend — React 18 + Vite + Zustand
 
-### Backend (FastAPI)
-- `GET /api/session/new` — create a new session
-- `GET /api/state/{session_id}` — get current form state (REST fallback)
-- `WS /ws/{session_id}` — main communication channel
-
-### Agent (LangGraph ReAct)
 ```
-Human message
-      │
-      ▼
- ┌─────────────┐      tool calls      ┌─────────────┐
- │  agent_node │ ─────────────────►  │  tool_node  │
- │  (Claude)   │ ◄─────────────────  │             │
- └─────────────┘    tool results     └─────────────┘
-      │
-      ▼ (no more tool calls)
- Assistant response → WebSocket → Browser
+src/
+├── store/useFormStore.js     ← single Zustand store (shared by both panels)
+├── hooks/useWebSocket.js     ← WebSocket lifecycle, message routing
+├── constants/schema.js       ← mirrors belair_quote_form.json for rendering
+├── components/
+│   ├── FormPanel.jsx         ← step cards, field renderers, progress bar
+│   ├── ChatPanel.jsx         ← messages, typing indicator, input
+│   └── fields/               ← RadioField, TextField, SelectField, DateField
+└── App.jsx                   ← session bootstrap, WebSocket init
 ```
 
-**Agent tools:**
+**Bidirectional sync — exact mechanism:**
+```
+Client fills form field directly
+  └─→ setAnswer(id, value, 'user')
+        ├─→ Zustand store updated (form re-renders instantly)
+        └─→ ws.send({ type: 'form_edit', field_id, value })
+              └─→ Backend saves silently — no agent call, no chat bubble
+                    └─→ Returns { type: 'state_update', form_state }
+                          └─→ Zustand applyFormState() — form stays in sync
+
+Agent fills a field (via update_form_answer tool)
+  └─→ ws receives { type: 'message', form_state }
+        ├─→ Chat bubble shown
+        ├─→ Zustand applyFormState() — form fields update
+        └─→ Field gets 1.6 s blue glow animation (agent-updated highlight)
+```
+
+**Panel layout — always visible:**
+CSS `min-height: 0` on `.app-body`, `.form-panel`, `.chat-panel` ensures both panels stay locked within the viewport and scroll independently, regardless of chat length.
+
+---
+
+### Backend — FastAPI + LangGraph
+
+**Endpoints:**
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/session/new` | Create session, return UUID |
+| `GET` | `/api/state/{session_id}` | REST form state snapshot |
+| `WS` | `/ws/{session_id}` | Main bidirectional channel |
+
+**WebSocket message contract:**
+```
+Client → Server
+  { type: "message",   content: "..."  }          → agent invoked, responds in chat
+  { type: "form_edit", field_id, value }           → saved silently, NO agent call
+
+Server → Client
+  { type: "init",         message, form_state }    → greeting on connect
+  { type: "message",      message, form_state }    → agent chat response + form sync
+  { type: "state_update", form_state }             → silent form sync (no chat bubble)
+  { type: "error",        detail }
+```
+
+**Silent form edit rule:**
+`form_edit` saves to SQLite and returns `state_update` only. The agent is never invoked. When the client next speaks to the agent, it calls `get_current_state` to catch up.
+
+---
+
+### Agent — LangGraph ReAct (reactive-only)
+
+```
+Client message (type: "message")
+        │
+        ▼
+  ┌─────────────┐   tool calls   ┌────────────┐
+  │ agent_node  │ ─────────────► │ tool_node  │
+  │  (Claude)   │ ◄───────────── │            │
+  └─────────────┘  tool results  └────────────┘
+        │
+        ▼ (done)
+  Response → WebSocket → Chat bubble + form_state update
+```
+
+**Agent tools (5 — down from 6):**
 | Tool | Purpose |
 |------|---------|
-| `get_form_schema` | Load full form definition from JSON |
-| `get_current_state` | Read current answers + position from DB |
-| `update_form_answer` | Save an answer, advance position |
-| `navigate_back` | Return to previous question |
-| `get_question_info` | Fetch tooltip/related_info for a field |
-| `check_step_complete` | Verify all step fields are answered |
+| `get_current_state` | Compact snapshot: `{answers, next_field_id, answered, total}` |
+| `update_form_answer` | Save one field answer, advance position |
+| `navigate_back` | Go to last answered field for correction |
+| `get_question_info` | Fetch tooltip/related_info for a specific field |
+| `check_step_complete` | Verify all fields in a step are filled |
 
-### Persistence
-- **LangGraph SqliteSaver** → stores full conversation message history per `thread_id` (session_id)
-- **SQLite `form_answers` table** → stores field-level answers accessible to both agent tools and REST API
-- **`localStorage`** → stores `session_id` in browser, enables session restore on refresh
+> `get_form_schema` was removed — schema is embedded as a compact text table in the system prompt, saving ~1,300 tokens per invocation.
 
 ---
 
-## Agentic Design Principles Applied
-1. **Grounded responses only** — agent reads form JSON via tool, never from training data
-2. **Human-in-the-loop** — step transitions require explicit client consent
-3. **Tool-based state mutation** — agent never writes state directly; uses tools
-4. **Persistent memory** — LangGraph checkpointer preserves full conversation context
-5. **Focused scope** — system prompt enforces topic boundary (insurance quote only)
-6. **Graceful back-navigation** — agent re-presents previous question with current answer shown
-7. **Bidirectional sync** — direct form edits notify the agent; agent updates reflect in form
+## Agentic Design Principles
+
+| Principle | Implementation |
+|-----------|---------------|
+| **Reactive, not proactive** | Agent speaks only when the client addresses it. Silent when client self-fills. |
+| **Grounded only** | All field explanations come from `get_question_info` (sourced from `belair_quote_form.json`). No paraphrasing from training data. |
+| **Human-in-the-loop** | When guiding mode is requested: agent asks one question at a time, confirms step summary, waits for explicit consent before advancing. |
+| **Tool-based mutation** | Agent never writes state directly — always via `update_form_answer`. |
+| **Persistent memory** | `AsyncSqliteSaver` checkpointer preserves full conversation per `thread_id` = `session_id`. |
+| **Bounded context** | `pre_model_hook` trims history to last 12 messages before each LLM call. |
+| **Lean tool outputs** | `get_current_state` returns only `{answers, next_field_id, answered, total}` — not full question objects. |
+| **Focused scope** | System prompt enforces topic boundary: declines all non-quote questions. |
+| **Back-navigation** | `navigate_back` surfaces last saved answer; client decides to keep or replace. |
 
 ---
 
-## Form Flow (strict order from belair_quote_form.json)
+## Token Efficiency (post-optimisation)
+
+| Source | Before | After |
+|--------|--------|-------|
+| Form schema per turn | ~1,500 tokens (tool call) | ~200 tokens (in system prompt) |
+| `get_current_state` response | ~600 tokens (full objects) | ~80 tokens (flat dict) |
+| Conversation history | Unbounded growth | Capped at last 12 messages |
+| Max output tokens | 1,024 | 512 |
+| **Net reduction** | | **~65% fewer input tokens/turn** |
+
+---
+
+## Persistence
+
+| Store | What | Technology |
+|-------|------|-----------|
+| Form answers | `{field_id: value}` per session | SQLite (`form_answers` table) |
+| Conversation history | Full message log per session | LangGraph `AsyncSqliteSaver` |
+| Session identity | UUID across refreshes | `localStorage` |
+
+---
+
+## Form Flow (`belair_quote_form.json` — single source of truth)
+
 ```
-Step 1: Vehicle Info        → Year → Make → Model
-Step 2: Vehicle Details     → Commute? → Yearly km → Condition → Anti-theft?
-Step 3: Driver Info         → First name → Last name → Gender → DOB → Age at first licence
-Step 4: Quote + Confirm     → 4.1 Coverage display
-                            → 4.2 Accidents/tickets → Lapse → Education → Credit check → Email
-                            → 4.3 Business use → Safe driving program
-                            → 4.4 Home bundle
-                            → 4.5 Next step (Continue)
+Step 1 — Vehicle Info
+  vehicle_year · vehicle_make · vehicle_model
+
+Step 2 — Vehicle Details
+  commute_to_work_school · yearly_kilometres · car_condition · anti_theft_system
+
+Step 3 — Driver Info
+  first_name · last_name · gender_identity · date_of_birth · age_first_licence
+
+Step 4 — Quote & Confirmation
+  accidents_tickets · lapse_in_coverage · education_discount · soft_credit_check
+  email · business_use · safe_driving_program · home_insurance_bundle
 ```
-
----
-
-## Non-Goals
-- No actual policy binding or payment processing
-- No multi-car / multi-driver flows
-- No provinces other than Quebec
-- Agent will not answer general insurance questions outside the Belair quote flow
 
 ---
 
 ## Tech Stack
-| Layer | Technology |
-|-------|-----------|
-| LLM | Anthropic Claude claude-sonnet-4-6 |
-| Agent framework | LangGraph (ReAct pattern) |
-| Backend | FastAPI + uvicorn |
-| Persistence | SQLite (form state) + LangGraph SqliteSaver (conversation) |
-| Frontend | Vanilla HTML/CSS/JS (no build step) |
-| Communication | WebSocket (bidirectional real-time sync) |
+
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| LLM | Claude claude-sonnet-4-6 | temperature 0, max_tokens 512 |
+| Agent framework | LangGraph 0.5.x (ReAct) | `create_react_agent` + `pre_model_hook` |
+| Conversation memory | `AsyncSqliteSaver` | async-safe, per thread_id |
+| Backend | FastAPI + uvicorn | lifespan manages checkpointer |
+| Form state DB | SQLite + SQLAlchemy-style raw queries | `FormDatabase` class |
+| Frontend | React 18 + Vite | proxy to FastAPI in dev |
+| State management | Zustand | single store, both panels subscribe |
+| Communication | WebSocket | bidirectional, 4 message types |
+| Node.js | conda env (`chatgpt_app`) | `PATH` set in `run.sh` |
+
+---
+
+## Running the App
+
+```bash
+# Production (build React → serve from FastAPI on :8000)
+./run.sh
+
+# Development (Vite on :3000 with HMR, FastAPI on :8000)
+./run.sh dev
+```
+
+`ANTHROPIC_API_KEY` must be exported in the shell (or in `backend/.env`).
+
+---
+
+## Non-Goals
+
+- No actual policy binding or payment processing
+- No multi-car / multi-driver flows
+- No provinces other than Quebec
+- No general insurance advice — agent declines off-topic questions
+- No RAG over policy documents (future phase)
