@@ -170,6 +170,7 @@ Client message (type: "message")
 | **Lean tool outputs** | `get_current_state` returns only `{answers, next_field_id, answered, total}` — not full question objects. |
 | **Focused scope** | System prompt enforces topic boundary: declines all non-quote questions. |
 | **Back-navigation** | `navigate_back` surfaces last saved answer; client decides to keep or replace. |
+| **Uncertainty handling** | If client says "I don't know", agent reassures and prompts for a best-effort answer using the field's tooltip context. Never accepts non-answers. |
 
 ---
 
