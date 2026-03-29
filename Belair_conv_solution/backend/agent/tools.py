@@ -4,6 +4,7 @@ All form knowledge comes exclusively from belair_quote_form.json.
 State is read/written through FormDatabase — never invented by the agent.
 """
 import json
+import re
 from pathlib import Path
 from langchain_core.tools import tool
 from db import FormDatabase
@@ -185,6 +186,104 @@ def get_question_info(field_id: str) -> str:
         },
         ensure_ascii=False,
     )
+
+
+_SCRAPED_DIR = Path(__file__).parent.parent.parent / "scraped"
+
+_STOP_WORDS = {
+    "a","an","the","is","it","in","on","at","to","for","of","and","or","i",
+    "my","your","what","how","do","does","can","will","be","are","was","has",
+    "have","about","with","this","that","they","we","you","me","if","any",
+    "get","its","by","as","so","am","would","could","should","not","no",
+}
+
+
+def _load_sections() -> list[dict]:
+    """
+    Parse all scraped markdown files into a flat list of scored sections.
+    Each section: {title, url, text}
+    """
+    sections = []
+
+    def _add(title: str, url: str, text: str):
+        url = url.strip().rstrip(")").rstrip("'\"")
+        if url.startswith("https://www.belairdirect.com"):
+            sections.append({"title": title.strip(), "url": url, "text": text.lower()})
+
+    for md_file in sorted(_SCRAPED_DIR.glob("*.md")):
+        content = md_file.read_text(encoding="utf-8")
+
+        # ── 1. Sublinks Found block: "- Title: URL"
+        sublinks_block = re.search(
+            r"## Sublinks Found\n(.*?)(?=\n---|\Z)", content, re.DOTALL
+        )
+        if sublinks_block:
+            for m in re.finditer(r"-\s+(.+?):\s+(https?://\S+)", sublinks_block.group(1)):
+                title, url = m.group(1), m.group(2)
+                # Search for this URL's section body to attach as context
+                body_match = re.search(
+                    rf"\*\*URL:\*\*\s*{re.escape(url.strip())}\s*\n(.*?)(?=\n---|\Z)",
+                    content, re.DOTALL
+                )
+                body = body_match.group(1) if body_match else title
+                _add(title, url, f"{title} {body}")
+
+        # ── 2. Individually rendered sections (after ---)
+        for part in content.split("---"):
+            url_m = re.search(r"\*\*(?:Main )?URL:\*\*\s*(https?://\S+)", part)
+            title_m = re.search(r"^##\s+(.+)$", part, re.MULTILINE)
+            if url_m and title_m:
+                _add(title_m.group(1), url_m.group(1), part)
+
+    return sections
+
+
+@tool
+def search_belair_docs(query: str) -> str:
+    """
+    Search the Belair Direct knowledge base (scraped website content) for pages
+    relevant to the client's question. Returns the top 2 most relevant links.
+
+    Use this whenever the client asks a question about car insurance, coverage,
+    discounts, claims, payments, the automerit app, or any Belair service.
+    Do NOT invent answers — only return the links found here.
+
+    Args:
+        query: The client's question or topic (plain text).
+    """
+    if not _SCRAPED_DIR.exists():
+        return json.dumps({"error": "Knowledge base not available."})
+
+    sections = _load_sections()
+    if not sections:
+        return json.dumps({"results": [], "message": "No documents found."})
+
+    query_words = set(re.findall(r"\w+", query.lower())) - _STOP_WORDS
+
+    scored = []
+    seen_urls = set()
+    for sec in sections:
+        if sec["url"] in seen_urls:
+            continue
+        score = sum(1 for w in query_words if w in sec["text"])
+        if score > 0:
+            scored.append((score, sec))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    results = []
+    seen = set()
+    for _, sec in scored:
+        if sec["url"] not in seen:
+            results.append({"title": sec["title"], "url": sec["url"]})
+            seen.add(sec["url"])
+        if len(results) == 2:
+            break
+
+    if not results:
+        return json.dumps({"results": [], "message": "No relevant links found."})
+
+    return json.dumps({"results": results}, ensure_ascii=False)
 
 
 @tool

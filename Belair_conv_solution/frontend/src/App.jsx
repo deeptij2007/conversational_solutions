@@ -10,12 +10,22 @@ export default function App() {
 
   useEffect(() => {
     async function bootstrap() {
+      const TOTAL_FIELDS = 20  // 3+4+5+8 across all steps
       // Restore or create session
       let sid = localStorage.getItem('belair_session_id')
       if (sid) {
         // Verify session still exists on server
         const res = await fetch(`/api/state/${sid}`)
-        if (!res.ok) sid = null
+        if (!res.ok) {
+          sid = null
+        } else {
+          const state = await res.json()
+          // If the form was fully completed, start a fresh quote on refresh
+          if (Object.keys(state.answers || {}).length >= TOTAL_FIELDS) {
+            localStorage.removeItem('belair_session_id')
+            sid = null
+          }
+        }
       }
       if (!sid) {
         const res = await fetch('/api/session/new')

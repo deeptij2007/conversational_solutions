@@ -16,9 +16,11 @@ const useFormStore = create((set, get) => ({
 
   // ── Form state ──────────────────────────────────────────────────────────────
   answers: {},
-  activeStep: 1,          // step currently being worked on
+  activeStep: 1,          // step currently being worked on (derived from answers)
   activeFieldId: null,    // field the agent is currently asking about
   highlightedField: null, // field just updated by agent (briefly highlighted)
+  viewStep: 1,            // step page currently visible in the form panel
+  quotePrice: null,       // randomly generated price shown on quote result page
 
   // ── Chat state ──────────────────────────────────────────────────────────────
   messages: [],
@@ -30,6 +32,9 @@ const useFormStore = create((set, get) => ({
 
   setWs: (ws) => set({ ws }),
   setWsStatus: (wsStatus) => set({ wsStatus }),
+
+  setViewStep: (viewStep) => set({ viewStep }),
+  setQuotePrice: (quotePrice) => set({ quotePrice }),
 
   /**
    * Update a single form field answer.

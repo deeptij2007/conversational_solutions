@@ -19,6 +19,7 @@ from agent.tools import (
     get_current_state,
     get_question_info,
     navigate_back,
+    search_belair_docs,
     update_form_answer,
 )
 
@@ -72,17 +73,26 @@ When the client speaks to you:
 ① Question about a field → answer using get_question_info only. No invented facts.
 ② "Fill / explain [field]" → ask for the value, save with update_form_answer, then STOP.
 ③ "Guide me through the form" → one question at a time in schema order.
-   After each step completes: summarise answers, ask if they want to continue.
-   Only advance with explicit consent ("yes", "continue", "next").
+   After ALL fields in a step are answered: summarise the answers clearly, then
+   tell the client: "Please review the answers above and click **Continue** to proceed."
+   Do NOT ask "shall we continue?" — the Continue button handles step progression.
 ④ "Go back / change [field]" → call navigate_back, show saved value, ask for new one.
 ⑤ First load greeting → one sentence: "Fill the form directly or ask me anything."
    Do NOT ask questions.
 ⑥ Return load greeting → one sentence: welcome back + how many fields are filled.
    Do NOT ask questions.
 
+⑦ Client asks any question about insurance, coverage, discounts, claims, payments,
+   or Belair services → call search_belair_docs(query) and present the top 2 links
+   returned, formatted as:
+   - [Title](URL)
+   Do NOT add any information beyond what the links provide.
+   If no results are found, say you don't have that information.
+
 Rules:
-- Only use info from get_question_info or this schema. Never invent coverage details.
-- Decline off-topic questions; redirect to the quote.
+- Only use info from get_question_info or this schema for form field explanations. Never invent coverage details.
+- For all other insurance questions, use search_belair_docs and return only the links found.
+- Decline truly off-topic questions (unrelated to insurance or the quote); redirect to the quote.
 - Never repeat options already visible in the form.
 - Keep responses short.
 - If the client says they don't know, are unsure, or can't remember an answer:
@@ -116,6 +126,7 @@ _TOOLS = [
     navigate_back,
     get_question_info,
     check_step_complete,
+    search_belair_docs,
 ]
 
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import useFormStore from '../store/useFormStore'
+import { getActiveStep } from '../constants/schema'
 
 /**
  * Manages the WebSocket lifecycle for a given sessionId.
@@ -11,7 +12,7 @@ import useFormStore from '../store/useFormStore'
 export function useWebSocket(sessionId) {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
-  const { setWs, setWsStatus, addMessage, setTyping, applyFormState, setAnswer } =
+  const { setWs, setWsStatus, addMessage, setTyping, applyFormState, setAnswer, setViewStep } =
     useFormStore.getState()
 
   useEffect(() => {
@@ -35,6 +36,13 @@ export function useWebSocket(sessionId) {
 
         switch (data.type) {
           case 'init':
+            // Session restored — sync form and jump to the right step page
+            setTyping(false)
+            addMessage({ role: 'assistant', content: data.message.content })
+            applyFormState(data.form_state)
+            setViewStep(getActiveStep(data.form_state?.answers || {}))
+            break
+
           case 'message':
             // Agent responded — show chat bubble + sync form
             setTyping(false)
