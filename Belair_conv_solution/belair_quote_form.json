@@ -1,0 +1,292 @@
+{
+  "form": "Belair Direct Car Insurance Quote - 1 Car, 1 Driver (Quebec)",
+  "source": "https://webquote.app.belairdirect.com/quote/car/1/info?language=en&province=qc&f=c&intcid=homepage:quote-from-bundle-started-1v-1d-0h",
+  "steps": [
+    {
+      "step": 1,
+      "title": "Vehicle Information",
+      "description": "What would you do without your car? Let us protect it! Quote for residents of the province of Quebec.",
+      "questions": [
+        {
+          "id": "vehicle_year",
+          "order": 1,
+          "question": "Year",
+          "related_info": "Select the year your vehicle was manufactured.",
+          "field_type": "dropdown"
+        },
+        {
+          "id": "vehicle_make",
+          "order": 2,
+          "question": "Make",
+          "related_info": "Select the make (brand) of your vehicle.",
+          "field_type": "dropdown"
+        },
+        {
+          "id": "vehicle_model",
+          "order": 3,
+          "question": "Model",
+          "related_info": "Select the model of your vehicle. You can also find your vehicle using the VIN (Vehicle Identification Number) for a quick and precise quote.",
+          "field_type": "dropdown"
+        }
+      ],
+      "additional_options": [
+        {
+          "label": "Find your car with the VIN",
+          "description": "For a quick and precise quote",
+          "type": "link"
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "title": "Let's get more details",
+      "description": "This information will help us customize your coverage.",
+      "questions": [
+        {
+          "id": "commute_to_work_school",
+          "order": 1,
+          "question": "Do you use your vehicle to commute to work or school?",
+          "related_info": "Indicates whether the vehicle is used for regular commuting purposes.",
+          "field_type": "radio",
+          "options": ["No", "Yes"]
+        },
+        {
+          "id": "yearly_kilometres",
+          "order": 2,
+          "question": "Yearly kilometres",
+          "related_info": "Estimated total number of kilometres you expect to drive in a year. More kilometres may affect your premium.",
+          "field_type": "dropdown",
+          "has_tooltip": true
+        },
+        {
+          "id": "car_condition",
+          "order": 3,
+          "question": "Condition of the car when you got it",
+          "related_info": "The condition of the vehicle at the time you acquired it affects the type of coverage available.",
+          "field_type": "radio",
+          "options": ["New", "Used", "Demo"]
+        },
+        {
+          "id": "anti_theft_system",
+          "order": 4,
+          "question": "Anti-theft system",
+          "related_info": "You could save more if your car has an anti-theft system. An anti-theft system helps deter theft and may reduce your premium.",
+          "field_type": "radio",
+          "options": ["No", "Yes"],
+          "has_tooltip": true
+        }
+      ],
+      "promotional_info": "Insure more than one car and you could save 15%"
+    },
+    {
+      "step": 3,
+      "title": "Driver Information",
+      "description": "Your age could unlock a discount! Start by entering the details of the registered owner of at least one of the vehicles you're insuring.",
+      "questions": [
+        {
+          "id": "first_name",
+          "order": 1,
+          "question": "First name",
+          "related_info": "As it appears on your driver's licence.",
+          "field_type": "text",
+          "validation": "First name is required to continue."
+        },
+        {
+          "id": "last_name",
+          "order": 2,
+          "question": "Last name",
+          "related_info": "As it appears on your driver's licence.",
+          "field_type": "text"
+        },
+        {
+          "id": "gender_identity",
+          "order": 3,
+          "question": "Gender identity",
+          "related_info": "In order to provide an accurate quote, we need to know the gender identity of the individual being insured—as it appears under the Sex listed on their driver's licence. Gender X acknowledges all identities including but not limited to trans, non-binary, two-spirit, and binary people. We're committed to ensuring people of all genders and identities feel safe, welcome, and respected.",
+          "field_type": "radio",
+          "options": ["Male", "Female", "X"],
+          "has_tooltip": true
+        },
+        {
+          "id": "date_of_birth",
+          "order": 4,
+          "question": "Date of birth",
+          "related_info": "Your date of birth is used to calculate your age and determine applicable discounts and pricing.",
+          "field_type": "date",
+          "format": "Month / DD / YYYY"
+        },
+        {
+          "id": "age_first_licence",
+          "order": 5,
+          "question": "Age when you got your first driver's licence",
+          "related_info": "Can't remember how old you were when you got your first driver's licence? Don't worry! An approximate age will do.",
+          "field_type": "number",
+          "prompt": "I was ___ years old",
+          "has_tooltip": true
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "title": "Your Quote & Next Steps",
+      "description": "Review your personalized quote and complete the sections below to finalize your coverage.",
+      "pricing_disclaimer": "The initial estimated prices displayed on this page are based on the summary information you provided, certain assumptions and preselected values (e.g. certain discounts for which you may be eligible) and are subject to change. When you complete your quote, we will provide a final price based on your unique situation and options for coverage and discounts, if applicable and subject to eligibility criteria. This initial estimated price is valid for 60 days.",
+      "sub_steps": [
+        {
+          "sub_step": "4.1",
+          "title": "Your coverage",
+          "order": 1,
+          "description": "Personalized coverage tailored to your driving profile.",
+          "field_type": "display_with_action",
+          "coverage_items": [
+            {
+              "name": "Third party property damage protection",
+              "detail": "Section A: Civil Liability. Covered up to $1,000,000."
+            },
+            {
+              "name": "Accident and collision protection",
+              "detail": "Collision and upset. Deductible: $500."
+            },
+            {
+              "name": "Extra damage protection",
+              "detail": "Coverage applies to perils other than Collision or Upset. Deductible: $250."
+            },
+            {
+              "name": "Extra medical fund",
+              "detail": "Section B: Accident Benefits Insurance."
+            },
+            {
+              "name": "Unexpected expenses",
+              "detail": "Assessorial coverage for unexpected costs."
+            }
+          ],
+          "action": {
+            "label": "Customize",
+            "type": "button",
+            "description": "Adjust your coverage options and deductibles."
+          }
+        },
+        {
+          "sub_step": "4.2",
+          "title": "Confirm driver's information",
+          "order": 2,
+          "description": "Browse a few more questions to avoid any surprises.",
+          "field_type": "confirmation_flow",
+          "questions": [
+            {
+              "id": "accidents_tickets",
+              "order": 1,
+              "question": "Have you had any at-fault accidents or traffic tickets in the past 6 years?",
+              "related_info": "Your driving history including accidents and tickets affects your insurance premium. Please confirm the accuracy of your driving record.",
+              "field_type": "confirmation_flow"
+            },
+            {
+              "id": "lapse_in_coverage",
+              "order": 2,
+              "question": "Have you had a lapse in coverage?",
+              "related_info": "If you were not covered by a car insurance policy for six months or more, this is considered a lapse in coverage.",
+              "field_type": "radio",
+              "options": ["No", "Yes"],
+              "has_tooltip": true
+            },
+            {
+              "id": "education_discount",
+              "order": 3,
+              "question": "Do you have a university degree?",
+              "related_info": "Unlock a discount if you have a bachelor's, master's or doctorate degree. Group membership may be verified.",
+              "field_type": "radio",
+              "options": ["No", "Yes"],
+              "has_tooltip": true
+            },
+            {
+              "id": "soft_credit_check",
+              "order": 4,
+              "question": "Do you consent to a soft credit check?",
+              "related_info": "A soft credit check provides a basic overview of your credit report without impacting your score. With this information, your price will reflect our best offer and you could save up to 25% on your car insurance. By selecting Yes, you agree that belairdirect may collect and use your credit information from consumer reporting agencies. If you become a customer, this information will be updated periodically to determine your future price (insurance premium) and any potential savings. For more information, visit the Insurance Bureau of Canada's guide: All about credit information and insurance.",
+              "field_type": "radio",
+              "options": ["No", "Yes"],
+              "has_tooltip": true
+            },
+            {
+              "id": "email",
+              "order": 5,
+              "question": "What is your email address?",
+              "related_info": "We will only use your email address to save or send you a copy of your quote.",
+              "field_type": "email",
+              "has_tooltip": true
+            }
+          ],
+          "action": {
+            "label": "Confirm",
+            "type": "button"
+          }
+        },
+        {
+          "sub_step": "4.3",
+          "title": "Review your car usage and discounts",
+          "order": 3,
+          "description": "Don't forget to review your car usage and discounts.",
+          "field_type": "confirmation_flow",
+          "questions": [
+            {
+              "id": "business_use",
+              "order": 1,
+              "question": "Do you use your vehicle for business purposes?",
+              "related_info": "Business use of your vehicle may affect your coverage and premium.",
+              "field_type": "radio",
+              "options": ["No", "Yes"]
+            },
+            {
+              "id": "safe_driving_program",
+              "order": 2,
+              "question": "Would you like to enroll in a safe driving program?",
+              "related_info": "A safe driving program tracks your driving habits and can unlock additional discounts based on good driving behaviour.",
+              "field_type": "radio",
+              "options": ["No", "Yes"]
+            }
+          ],
+          "action": {
+            "label": "Add",
+            "type": "button"
+          }
+        },
+        {
+          "sub_step": "4.4",
+          "title": "Car + Home discount",
+          "order": 4,
+          "description": "Bundle your car and home insurance to unlock additional savings.",
+          "field_type": "checkbox_or_button",
+          "questions": [
+            {
+              "id": "home_insurance_bundle",
+              "order": 1,
+              "question": "Would you like to add home insurance for an additional discount?",
+              "related_info": "Bundling your car and home insurance with belairdirect can give you a combined discount on both policies.",
+              "field_type": "button",
+              "action_label": "Add home insurance"
+            }
+          ]
+        },
+        {
+          "sub_step": "4.5",
+          "title": "Next step",
+          "order": 5,
+          "description": "Your quote is ready. Continue to finalize your coverage and get insured.",
+          "field_type": "action",
+          "action": {
+            "label": "Continue",
+            "type": "button"
+          },
+          "contact": {
+            "phone": "1 833 273-3903",
+            "hours": {
+              "Monday_to_Friday": "8 a.m. to 8 p.m.",
+              "Saturday": "9 a.m. to 5 p.m.",
+              "Sunday": "Closed"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
