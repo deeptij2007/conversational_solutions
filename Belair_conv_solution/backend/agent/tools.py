@@ -188,6 +188,8 @@ def get_question_info(field_id: str) -> str:
     )
 
 
+import requests as _requests
+
 _SCRAPED_DIR = Path(__file__).parent.parent.parent / "scraped"
 
 _STOP_WORDS = {
@@ -197,43 +199,90 @@ _STOP_WORDS = {
     "get","its","by","as","so","am","would","could","should","not","no",
 }
 
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,*/*",
+}
+
+
+def _url_depth(url: str) -> int:
+    """Count meaningful path segments — more segments = more specific page."""
+    from urllib.parse import urlparse
+    parts = [p for p in urlparse(url).path.split("/") if p and p not in ("en",)]
+    return len(parts)
+
+
+def _url_live(url: str) -> bool:
+    """Return True if the URL responds with HTTP 200 (GET, no body downloaded)."""
+    try:
+        resp = _requests.get(
+            url, headers=_BROWSER_HEADERS, timeout=6,
+            stream=True, allow_redirects=True
+        )
+        resp.close()
+        return resp.status_code == 200
+    except Exception:
+        return False
+
 
 def _load_sections() -> list[dict]:
     """
-    Parse all scraped markdown files into a flat list of scored sections.
-    Each section: {title, url, text}
+    Parse all scraped markdown files into a flat list of candidate sections.
+    Each entry: {title, url, text, depth}
     """
     sections = []
+    seen_urls: set[str] = set()
 
     def _add(title: str, url: str, text: str):
         url = url.strip().rstrip(")").rstrip("'\"")
-        if url.startswith("https://www.belairdirect.com"):
-            sections.append({"title": title.strip(), "url": url, "text": text.lower()})
+        # Skip overly broad index pages and duplicates
+        if not url.startswith("https://www.belairdirect.com"):
+            return
+        if url in seen_urls:
+            return
+        if url.rstrip("/").endswith(("?province=QCENT", "/blog", "/faq.html",
+                                     "/user-guide.html", "/prevention-hub.html",
+                                     "/save-on-insurance.html")):
+            return  # too broad — skip top-level indexes
+        seen_urls.add(url)
+        sections.append({
+            "title": title.strip(),
+            "url": url,
+            "text": text.lower(),
+            "depth": _url_depth(url),
+        })
+
+    _SKIP_TITLES = {"sublinks found", "main page content", "blog main page content"}
 
     for md_file in sorted(_SCRAPED_DIR.glob("*.md")):
         content = md_file.read_text(encoding="utf-8")
 
-        # ── 1. Sublinks Found block: "- Title: URL"
+        # ── Sublinks Found block: "- Title: URL"
         sublinks_block = re.search(
             r"## Sublinks Found\n(.*?)(?=\n---|\Z)", content, re.DOTALL
         )
         if sublinks_block:
             for m in re.finditer(r"-\s+(.+?):\s+(https?://\S+)", sublinks_block.group(1)):
-                title, url = m.group(1), m.group(2)
-                # Search for this URL's section body to attach as context
-                body_match = re.search(
-                    rf"\*\*URL:\*\*\s*{re.escape(url.strip())}\s*\n(.*?)(?=\n---|\Z)",
+                title, url = m.group(1), m.group(2).strip()
+                # Find the section body for this URL to attach as context text
+                body_m = re.search(
+                    rf"\*\*URL:\*\*\s*{re.escape(url)}\s*\n(.*?)(?=\n---|\Z)",
                     content, re.DOTALL
                 )
-                body = body_match.group(1) if body_match else title
+                body = body_m.group(1) if body_m else title
                 _add(title, url, f"{title} {body}")
 
-        # ── 2. Individually rendered sections (after ---)
+        # ── Full section blocks (## heading + **URL:** …)
         for part in content.split("---"):
-            url_m = re.search(r"\*\*(?:Main )?URL:\*\*\s*(https?://\S+)", part)
+            url_m   = re.search(r"\*\*(?:Main )?URL:\*\*\s*(https?://\S+)", part)
             title_m = re.search(r"^##\s+(.+)$", part, re.MULTILINE)
             if url_m and title_m:
-                _add(title_m.group(1), url_m.group(1), part)
+                if title_m.group(1).strip().lower() not in _SKIP_TITLES:
+                    _add(title_m.group(1), url_m.group(1), part)
 
     return sections
 
@@ -241,11 +290,12 @@ def _load_sections() -> list[dict]:
 @tool
 def search_belair_docs(query: str) -> str:
     """
-    Search the Belair Direct knowledge base (scraped website content) for pages
-    relevant to the client's question. Returns the top 2 most relevant links.
+    Search the Belair Direct knowledge base (scraped website content) for the
+    most specific pages relevant to the client's question. Validates each URL
+    before returning it. Returns the top 3 confirmed-live links.
 
     Use this whenever the client asks a question about car insurance, coverage,
-    discounts, claims, payments, the automerit app, or any Belair service.
+    discounts, claims, payments, the automerit program, or any Belair service.
     Do NOT invent answers — only return the links found here.
 
     Args:
@@ -260,28 +310,45 @@ def search_belair_docs(query: str) -> str:
 
     query_words = set(re.findall(r"\w+", query.lower())) - _STOP_WORDS
 
+    def _slug_match(url: str) -> int:
+        """Count query words that are a prefix-match of any word in the URL slug."""
+        from urllib.parse import urlparse
+        slug_words = re.findall(r"\w+", urlparse(url).path.lower())
+        return sum(
+            1 for q in query_words
+            for sw in slug_words
+            if sw.startswith(q) or q.startswith(sw[:max(4, len(q))])
+        )
+
+    # Score: body match + bonus for title/URL keyword match + slug prefix match
     scored = []
-    seen_urls = set()
     for sec in sections:
-        if sec["url"] in seen_urls:
-            continue
-        score = sum(1 for w in query_words if w in sec["text"])
-        if score > 0:
-            scored.append((score, sec))
+        body_score  = sum(1 for w in query_words if w in sec["text"])
+        title_score = sum(2 for w in query_words if w in sec["title"].lower())
+        url_score   = sum(2 for w in query_words if w in sec["url"].lower())
+        slug_score  = _slug_match(sec["url"])
+        total = body_score + title_score + url_score
+        if total > 0:
+            # Sort key: (total, slug_match, depth) — slug_match breaks ties
+            scored.append((total, slug_score, sec["depth"], sec))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    # Sort: total score desc, slug_match desc, depth desc
+    scored.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
 
+    # Validate candidates one by one; collect up to 3 live URLs
     results = []
     seen = set()
-    for _, sec in scored:
-        if sec["url"] not in seen:
+    for _, _, _, sec in scored:
+        if sec["url"] in seen:
+            continue
+        if _url_live(sec["url"]):
             results.append({"title": sec["title"], "url": sec["url"]})
             seen.add(sec["url"])
-        if len(results) == 2:
+        if len(results) == 3:
             break
 
     if not results:
-        return json.dumps({"results": [], "message": "No relevant links found."})
+        return json.dumps({"results": [], "message": "No verified links found for this query."})
 
     return json.dumps({"results": results}, ensure_ascii=False)
 
