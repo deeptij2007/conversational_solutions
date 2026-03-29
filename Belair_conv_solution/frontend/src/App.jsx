@@ -10,7 +10,6 @@ export default function App() {
 
   useEffect(() => {
     async function bootstrap() {
-      const TOTAL_FIELDS = 20  // 3+4+5+8 across all steps
       // Restore or create session
       let sid = localStorage.getItem('belair_session_id')
       if (sid) {
@@ -20,8 +19,8 @@ export default function App() {
           sid = null
         } else {
           const state = await res.json()
-          // If the form was fully completed, start a fresh quote on refresh
-          if (Object.keys(state.answers || {}).length >= TOTAL_FIELDS) {
+          // Start fresh if the client already completed and submitted the form
+          if (state.answers?.soft_credit_check) {
             localStorage.removeItem('belair_session_id')
             sid = null
           }

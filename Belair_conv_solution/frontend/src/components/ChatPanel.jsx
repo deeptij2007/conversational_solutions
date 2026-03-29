@@ -12,8 +12,26 @@ function TypingIndicator() {
   )
 }
 
+/** Parse markdown [text](url) links into <a> elements. */
+function renderContent(text) {
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g
+  const parts = []
+  let last = 0, match
+  while ((match = linkRegex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    parts.push(
+      <a key={match.index} href={match[2]} target="_blank" rel="noopener noreferrer" className="chat-link">
+        {match[1]}
+      </a>
+    )
+    last = match.index + match[0].length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts.length ? parts : text
+}
+
 function Message({ msg }) {
-  const isUser = msg.role === 'user'
+  const isUser   = msg.role === 'user'
   const isSystem = msg.role === 'system'
 
   if (isSystem) {
@@ -24,7 +42,7 @@ function Message({ msg }) {
     <div className={`msg ${isUser ? 'msg--user' : 'msg--assistant'}`}>
       {!isUser && <div className="msg-avatar">B</div>}
       <div className={`msg-bubble ${isUser ? 'msg-bubble--user' : 'msg-bubble--assistant'}`}>
-        {msg.content}
+        {isUser ? msg.content : renderContent(msg.content)}
       </div>
       {isUser && <div className="msg-avatar msg-avatar--user">Me</div>}
     </div>

@@ -189,6 +189,7 @@ def get_question_info(field_id: str) -> str:
 
 
 import requests as _requests
+from concurrent.futures import ThreadPoolExecutor as _TPE
 
 _SCRAPED_DIR = Path(__file__).parent.parent.parent / "scraped"
 
@@ -244,10 +245,9 @@ def _load_sections() -> list[dict]:
             return
         if url in seen_urls:
             return
-        if url.rstrip("/").endswith(("?province=QCENT", "/blog", "/faq.html",
-                                     "/user-guide.html", "/prevention-hub.html",
-                                     "/save-on-insurance.html")):
-            return  # too broad — skip top-level indexes
+        if url.rstrip("/").endswith(("?province=QCENT", "/blog",
+                                     "/user-guide.html", "/prevention-hub.html")):
+            return  # pure listing pages — skip
         seen_urls.add(url)
         sections.append({
             "title": title.strip(),
@@ -268,7 +268,6 @@ def _load_sections() -> list[dict]:
         if sublinks_block:
             for m in re.finditer(r"-\s+(.+?):\s+(https?://\S+)", sublinks_block.group(1)):
                 title, url = m.group(1), m.group(2).strip()
-                # Find the section body for this URL to attach as context text
                 body_m = re.search(
                     rf"\*\*URL:\*\*\s*{re.escape(url)}\s*\n(.*?)(?=\n---|\Z)",
                     content, re.DOTALL
@@ -284,7 +283,34 @@ def _load_sections() -> list[dict]:
                 if title_m.group(1).strip().lower() not in _SKIP_TITLES:
                     _add(title_m.group(1), url_m.group(1), part)
 
+        # ── Also index ### subsections of the main FAQ page for specific topics
+        if "faq" in md_file.name:
+            faq_url = "https://www.belairdirect.com/en/faq.html"
+            for heading_m in re.finditer(r"^###\s+(.+)$", content, re.MULTILINE):
+                h = heading_m.group(1).strip()
+                if len(h) > 10 and h.lower() not in _SKIP_TITLES:
+                    # Find text following this heading until next ###
+                    start = heading_m.end()
+                    next_m = re.search(r"^###", content[start:], re.MULTILINE)
+                    body = content[start: start + (next_m.start() if next_m else 400)]
+                    _add(h, faq_url, f"{h} {body}")
+
     return sections
+
+
+# ── Pre-validate all known URLs once at startup (parallel) ────────────────────
+
+def _build_live_url_cache() -> set:
+    if not _SCRAPED_DIR.exists():
+        return set()
+    sections = _load_sections()
+    all_urls = list({s["url"] for s in sections})
+    with _TPE(max_workers=12) as ex:
+        results = list(ex.map(_url_live, all_urls))
+    return {u for u, ok in zip(all_urls, results) if ok}
+
+
+_LIVE_URLS: set = _build_live_url_cache()
 
 
 @tool
@@ -335,15 +361,25 @@ def search_belair_docs(query: str) -> str:
     # Sort: total score desc, slug_match desc, depth desc
     scored.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
 
-    # Validate candidates one by one; collect up to 3 live URLs
+    # Collect up to 3 live, diverse results
     results = []
-    seen = set()
+    seen_urls = set()
+    blog_count = 0  # cap blog articles at 2 to ensure diversity
+
     for _, _, _, sec in scored:
-        if sec["url"] in seen:
+        if sec["url"] in seen_urls:
             continue
-        if _url_live(sec["url"]):
-            results.append({"title": sec["title"], "url": sec["url"]})
-            seen.add(sec["url"])
+        if sec["url"] not in _LIVE_URLS:
+            continue
+
+        is_blog = "/blog/" in sec["url"]
+        if is_blog and blog_count >= 2:
+            continue  # prefer specific product/guide pages over a 3rd blog post
+
+        results.append({"title": sec["title"], "url": sec["url"]})
+        seen_urls.add(sec["url"])
+        if is_blog:
+            blog_count += 1
         if len(results) == 3:
             break
 
