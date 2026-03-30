@@ -44,14 +44,14 @@ export function useWebSocket(sessionId) {
             break
 
           case 'message':
-            // Agent responded — show chat bubble + sync form
+            // Agent responded — show chat bubble + sync form answers
             setTyping(false)
             addMessage({ role: 'assistant', content: data.message.content })
             applyFormState(data.form_state)
             break
 
           case 'state_update':
-            // Silent form sync after a direct field edit — no chat bubble
+            // Silent form sync after a direct field edit
             applyFormState(data.form_state)
             break
 

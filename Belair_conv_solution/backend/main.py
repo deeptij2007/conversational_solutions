@@ -25,6 +25,7 @@ Behaviour contract:
     addresses it. It never proactively asks questions when the client
     is self-filling the form.
 """
+import json
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -120,15 +121,51 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 if not user_text:
                     continue
 
-                result = await graph.ainvoke(
+                final_text = ""
+                async for event in graph.astream_events(
                     {"messages": [HumanMessage(content=f"[SESSION_ID: {session_id}] {user_text}")]},
                     config,
-                )
-                assistant_text = result["messages"][-1].content
+                    version="v2",
+                ):
+                    kind = event["event"]
+
+                    # Push each filled field to the form panel immediately
+                    if kind == "on_tool_end" and event["name"] == "update_form_answer":
+                        try:
+                            raw = event["data"].get("output", "")
+                            # astream_events v2 may return a ToolMessage object
+                            if hasattr(raw, "content"):
+                                raw = raw.content
+                            if isinstance(raw, str):
+                                parsed = json.loads(raw)
+                                saved = parsed.get("saved", {})
+                                if saved.get("field_id"):
+                                    await websocket.send_json({
+                                        "type": "form_update",
+                                        "field_id": saved["field_id"],
+                                        "value": saved["value"],
+                                    })
+                        except Exception:
+                            pass
+
+                    # Capture the last text response from the LLM
+                    elif kind == "on_chat_model_end":
+                        output = event["data"].get("output")
+                        if output:
+                            content = getattr(output, "content", "")
+                            if isinstance(content, str) and content.strip():
+                                final_text = content
+                            elif isinstance(content, list):
+                                text = " ".join(
+                                    b.get("text", "") for b in content
+                                    if isinstance(b, dict) and b.get("type") == "text"
+                                ).strip()
+                                if text:
+                                    final_text = text
 
                 await websocket.send_json({
                     "type": "message",
-                    "message": {"role": "assistant", "content": assistant_text},
+                    "message": {"role": "assistant", "content": final_text},
                     "form_state": db.get_full_state(session_id),
                 })
 

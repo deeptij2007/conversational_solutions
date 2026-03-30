@@ -1,23 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import useFormStore from '../../store/useFormStore'
 
 export default function TextField({ field, disabled }) {
-  const answers = useFormStore((s) => s.answers)
-  const highlightedField = useFormStore((s) => s.highlightedField)
+  const storeVal = useFormStore((s) => s.answers[field.id] ?? '')
+  const isHighlighted = useFormStore((s) => s.highlightedField === field.id)
   const setAnswer = useFormStore((s) => s.setAnswer)
 
-  const [localVal, setLocalVal] = useState(answers[field.id] ?? '')
-  const isHighlighted = highlightedField === field.id
+  const [localVal, setLocalVal] = useState(storeVal)
 
-  // Sync if agent updates the value externally
-  const storeVal = answers[field.id] ?? ''
-  if (storeVal !== localVal && isHighlighted) {
+  // Sync local display whenever the store value changes (agent fill, session restore, etc.)
+  useEffect(() => {
     setLocalVal(storeVal)
-  }
+  }, [storeVal])
 
   const commit = () => {
     const trimmed = localVal.trim()
-    if (trimmed && trimmed !== answers[field.id]) {
+    if (trimmed !== storeVal) {
       setAnswer(field.id, trimmed, 'user')
     }
   }

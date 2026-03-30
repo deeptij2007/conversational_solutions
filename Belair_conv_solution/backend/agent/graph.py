@@ -45,15 +45,27 @@ STEP 3 — Driver Information
   date_of_birth     | Date of birth               | date   | MM/DD/YYYY
   age_first_licence | Age at first driver licence | number | approximate ok
 
-STEP 4 — Quote & Confirmation
-  accidents_tickets    | Accidents/tickets (6 yrs)?        | radio | None, Yes
-  lapse_in_coverage    | Lapse in coverage (≥6 months)?    | radio | No, Yes
-  education_discount   | University degree?                | radio | No, Yes
-  soft_credit_check    | Consent to soft credit check?     | radio | No, Yes
-  email                | Email address                     | email |
-  business_use         | Business use?                     | radio | No, Yes
-  safe_driving_program | Enroll in safe driving program?   | radio | No, Yes
-  home_insurance_bundle| Add home insurance bundle?        | radio | No, Yes
+STEP 4 — Contact Details  ("Last step before your price!")
+  email             | Email address               | email  |
+  phone_type        | Phone type                  | select | Mobile, Home, Work
+  phone_number      | Phone number                | text   | e.g. 555-000-0000
+  postal_code       | Postal code                 | text   | e.g. A1A 1A1
+  years_at_address  | Years at current address    | select | <1yr, 1-2, 3-5, 6-10, >10
+
+STEP 5 — Discounts & Perks  ("Exclusive discounts and perks")
+  accidents_tickets    | At-fault accidents/tickets (6 yrs)? | radio | None, Yes
+  lapse_in_coverage    | Lapse in coverage (≥6 months)?      | radio | No, Yes
+  education_discount   | University degree?                  | radio | No, Yes
+  business_use         | Business use of vehicle?            | radio | No, Yes
+  safe_driving_program | Enroll in safe driving program?     | radio | No, Yes
+  home_insurance_bundle| Add home insurance bundle?          | radio | No, Yes
+  group_member         | Employee/alumni group member?       | text  | OPTIONAL — ask but accept if client skips
+
+STEP 6 — Review & Submit  ("Almost there!")
+  terms_agreement   | Terms of Use agreement    | agreement | Ask: "Do you agree to the Terms of Use and use of personal information?"
+  contact_permission| Contact permission        | agreement | Ask: "Do you give belairdirect permission to contact you about products and services?"
+  soft_credit_check | Soft credit check consent | agreement | Ask: "Do you consent to a soft credit check to potentially save up to 25%?"
+  → After all three are answered, tell client: "Please review the agreements above and click **Get Your Price** to proceed."
 """
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -72,8 +84,15 @@ The client fills the form themselves; you observe silently unless asked.
 When the client speaks to you:
 ① Question about a field → answer using get_question_info only. No invented facts.
 ② "Fill / explain [field]" → ask for the value, save with update_form_answer, then STOP.
-③ "Guide me through the form" → one question at a time in schema order.
-   After ALL fields in a step are answered: summarise the answers clearly, then
+③ Client asks you to fill / guide them through the form →
+   FIRST call get_current_state to see what is already answered.
+   Then continue from next_field_id — SKIP every field that already has a value.
+   Ask one unanswered question at a time in schema order.
+   For agreement fields (terms_agreement, contact_permission, soft_credit_check):
+     ask the question shown in the schema, wait for Yes/No, save with update_form_answer.
+     Accepted values: "Yes, I agree" for yes, "" or "No" for no.
+   For optional fields (group_member): ask once; if client skips or says N/A, move on.
+   After ALL fields in a step are answered: summarise only that step's answers, then
    tell the client: "Please review the answers above and click **Continue** to proceed."
    Do NOT ask "shall we continue?" — the Continue button handles step progression.
 ④ "Go back / change [field]" → call navigate_back, show saved value, ask for new one.
@@ -83,11 +102,15 @@ When the client speaks to you:
    Do NOT ask questions.
 
 ⑦ Client asks any question about insurance, coverage, discounts, claims, payments,
-   or Belair services → call search_belair_docs(query) and present the links
-   returned (up to 3), formatted as:
-   - [Title](URL)
-   Do NOT add any information beyond what the links provide.
-   If no results are found, say you don't have that information.
+   or Belair services → call search_belair_docs(query) and present every result
+   returned, grouped by category label, formatted as:
+   **FAQ:** [Title](URL)
+   **User Guide:** [Title](URL)
+   **Blog:** [Title](URL)
+   **Prevention Hub:** [Title](URL)
+   **Contact Us:** [Title](URL)
+   Only show lines where a result exists. Do NOT add any information beyond the links.
+   If no results at all, say you don't have that information.
 
 Rules:
 - Only use info from get_question_info or this schema for form field explanations. Never invent coverage details.
@@ -111,10 +134,21 @@ _MAX_HISTORY = 12  # keep last N messages before the model call
 
 
 def _trim_messages(state: dict) -> dict:
-    """Drop oldest messages to keep context small. System prompt is added by create_react_agent."""
+    """
+    Keep the last _MAX_HISTORY messages, then walk forward to the first
+    HumanMessage so we never start with an orphaned tool_result block.
+    (A tool_result without its preceding tool_use causes a 400 from Claude.)
+    """
+    from langchain_core.messages import HumanMessage
     msgs = state["messages"]
     if len(msgs) > _MAX_HISTORY:
         msgs = msgs[-_MAX_HISTORY:]
+        # Advance past any leading non-Human messages (tool_result / AIMessage)
+        # that would be missing their matching tool_use context.
+        for i, m in enumerate(msgs):
+            if isinstance(m, HumanMessage):
+                msgs = msgs[i:]
+                break
     return {"llm_input_messages": msgs}
 
 
@@ -131,7 +165,7 @@ _TOOLS = [
 
 
 def build_graph(checkpointer):
-    llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0, max_tokens=512)
+    llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0, max_tokens=768)
 
     return create_react_agent(
         llm,

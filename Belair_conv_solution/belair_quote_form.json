@@ -48,7 +48,10 @@
           "question": "Do you use your vehicle to commute to work or school?",
           "related_info": "Indicates whether the vehicle is used for regular commuting purposes.",
           "field_type": "radio",
-          "options": ["No", "Yes"]
+          "options": [
+            "No",
+            "Yes"
+          ]
         },
         {
           "id": "yearly_kilometres",
@@ -64,7 +67,11 @@
           "question": "Condition of the car when you got it",
           "related_info": "The condition of the vehicle at the time you acquired it affects the type of coverage available.",
           "field_type": "radio",
-          "options": ["New", "Used", "Demo"]
+          "options": [
+            "New",
+            "Used",
+            "Demo"
+          ]
         },
         {
           "id": "anti_theft_system",
@@ -72,7 +79,10 @@
           "question": "Anti-theft system",
           "related_info": "You could save more if your car has an anti-theft system. An anti-theft system helps deter theft and may reduce your premium.",
           "field_type": "radio",
-          "options": ["No", "Yes"],
+          "options": [
+            "No",
+            "Yes"
+          ],
           "has_tooltip": true
         }
       ],
@@ -104,7 +114,11 @@
           "question": "Gender identity",
           "related_info": "In order to provide an accurate quote, we need to know the gender identity of the individual being insured—as it appears under the Sex listed on their driver's licence. Gender X acknowledges all identities including but not limited to trans, non-binary, two-spirit, and binary people. We're committed to ensuring people of all genders and identities feel safe, welcome, and respected.",
           "field_type": "radio",
-          "options": ["Male", "Female", "X"],
+          "options": [
+            "Male",
+            "Female",
+            "X"
+          ],
           "has_tooltip": true
         },
         {
@@ -132,6 +146,62 @@
       "description": "Review your personalized quote and complete the sections below to finalize your coverage.",
       "pricing_disclaimer": "The initial estimated prices displayed on this page are based on the summary information you provided, certain assumptions and preselected values (e.g. certain discounts for which you may be eligible) and are subject to change. When you complete your quote, we will provide a final price based on your unique situation and options for coverage and discounts, if applicable and subject to eligibility criteria. This initial estimated price is valid for 60 days.",
       "sub_steps": [
+        {
+          "sub_step": "4.0",
+          "title": "Contact Details",
+          "order": 0,
+          "description": "A few contact details to save and send your quote.",
+          "field_type": "form",
+          "questions": [
+            {
+              "id": "email",
+              "order": 1,
+              "question": "What is your email address?",
+              "related_info": "We will only use your email to save or send you a copy of your quote.",
+              "field_type": "email"
+            },
+            {
+              "id": "phone_type",
+              "order": 2,
+              "question": "What type of phone number are you providing?",
+              "related_info": "Select the type of phone number: Mobile, Home, or Work.",
+              "field_type": "select",
+              "options": [
+                "Mobile",
+                "Home",
+                "Work"
+              ]
+            },
+            {
+              "id": "phone_number",
+              "order": 3,
+              "question": "What is your phone number?",
+              "related_info": "Enter your phone number in the format 555-000-0000.",
+              "field_type": "text"
+            },
+            {
+              "id": "postal_code",
+              "order": 4,
+              "question": "What is your postal code?",
+              "related_info": "Your postal code helps us calculate your rate accurately. Format: A1A 1A1.",
+              "field_type": "text"
+            },
+            {
+              "id": "years_at_address",
+              "order": 5,
+              "question": "How many years have you lived at your current address?",
+              "related_info": "Select a range: Less than 1 year, 1-2 years, 3-5 years, 6-10 years, or More than 10 years.",
+              "field_type": "select",
+              "options": [
+                "Less than 1 year",
+                "1 – 2 years",
+                "3 – 5 years",
+                "6 – 10 years",
+                "More than 10 years"
+              ]
+            }
+          ]
+        },
         {
           "sub_step": "4.1",
           "title": "Your coverage",
@@ -186,7 +256,10 @@
               "question": "Have you had a lapse in coverage?",
               "related_info": "If you were not covered by a car insurance policy for six months or more, this is considered a lapse in coverage.",
               "field_type": "radio",
-              "options": ["No", "Yes"],
+              "options": [
+                "No",
+                "Yes"
+              ],
               "has_tooltip": true
             },
             {
@@ -195,24 +268,10 @@
               "question": "Do you have a university degree?",
               "related_info": "Unlock a discount if you have a bachelor's, master's or doctorate degree. Group membership may be verified.",
               "field_type": "radio",
-              "options": ["No", "Yes"],
-              "has_tooltip": true
-            },
-            {
-              "id": "soft_credit_check",
-              "order": 4,
-              "question": "Do you consent to a soft credit check?",
-              "related_info": "A soft credit check provides a basic overview of your credit report without impacting your score. With this information, your price will reflect our best offer and you could save up to 25% on your car insurance. By selecting Yes, you agree that belairdirect may collect and use your credit information from consumer reporting agencies. If you become a customer, this information will be updated periodically to determine your future price (insurance premium) and any potential savings. For more information, visit the Insurance Bureau of Canada's guide: All about credit information and insurance.",
-              "field_type": "radio",
-              "options": ["No", "Yes"],
-              "has_tooltip": true
-            },
-            {
-              "id": "email",
-              "order": 5,
-              "question": "What is your email address?",
-              "related_info": "We will only use your email address to save or send you a copy of your quote.",
-              "field_type": "email",
+              "options": [
+                "No",
+                "Yes"
+              ],
               "has_tooltip": true
             }
           ],
@@ -234,7 +293,10 @@
               "question": "Do you use your vehicle for business purposes?",
               "related_info": "Business use of your vehicle may affect your coverage and premium.",
               "field_type": "radio",
-              "options": ["No", "Yes"]
+              "options": [
+                "No",
+                "Yes"
+              ]
             },
             {
               "id": "safe_driving_program",
@@ -242,7 +304,10 @@
               "question": "Would you like to enroll in a safe driving program?",
               "related_info": "A safe driving program tracks your driving habits and can unlock additional discounts based on good driving behaviour.",
               "field_type": "radio",
-              "options": ["No", "Yes"]
+              "options": [
+                "No",
+                "Yes"
+              ]
             }
           ],
           "action": {
@@ -264,6 +329,44 @@
               "related_info": "Bundling your car and home insurance with belairdirect can give you a combined discount on both policies.",
               "field_type": "button",
               "action_label": "Add home insurance"
+            },
+            {
+              "id": "group_member",
+              "order": 2,
+              "question": "Are you a member of an eligible employee group, alumni association, or other organization?",
+              "related_info": "Group membership (employer, school, or association) may qualify you for an additional discount. Group membership may be verified.",
+              "field_type": "text",
+              "required": false
+            }
+          ]
+        },
+        {
+          "sub_step": "4.6",
+          "title": "Review & Submit",
+          "order": 6,
+          "description": "Please review and agree to the following before getting your price.",
+          "field_type": "agreements",
+          "questions": [
+            {
+              "id": "terms_agreement",
+              "order": 1,
+              "question": "Do you agree to the Terms of Use and use of personal information?",
+              "related_info": "I have read and agree to the Terms of Use and use of personal information. I understand that the total estimated price provided is not a guaranteed amount.",
+              "field_type": "agreement"
+            },
+            {
+              "id": "contact_permission",
+              "order": 2,
+              "question": "Do you give belairdirect permission to contact you about its products and services?",
+              "related_info": "I give belairdirect permission to contact me about its products and services by email, by phone or via other means. I am aware that I may withdraw my consent at any time.",
+              "field_type": "agreement"
+            },
+            {
+              "id": "soft_credit_check",
+              "order": 3,
+              "question": "Do you consent to a soft credit check to help determine your best available rate?",
+              "related_info": "A soft credit check does not impact your credit score and could save you up to 25% on your car insurance. You can opt out at any time.",
+              "field_type": "agreement"
             }
           ]
         },

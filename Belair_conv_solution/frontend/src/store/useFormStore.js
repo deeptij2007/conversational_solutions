@@ -65,7 +65,8 @@ const useFormStore = create((set, get) => ({
   },
 
   /**
-   * Apply a full form_state snapshot from the server (after every agent response).
+   * Apply a full form_state snapshot from the server.
+   * Never changes viewStep — the client must click Continue to advance pages.
    */
   applyFormState: (formState) => {
     if (!formState) return

@@ -209,6 +209,35 @@ _BROWSER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,*/*",
 }
 
+# Maps filename stem keywords → category key
+_CATEGORY_STEMS = {
+    "faq": "faq",
+    "user-guide": "guide",
+    "userguide": "guide",
+    "blog": "blog",
+    "prevention-hub": "prevention",
+    "preventionhub": "prevention",
+    "contact-us": "contact",
+    "contactus": "contact",
+}
+
+_RESULT_CATEGORIES = ["faq", "guide", "blog", "prevention", "contact"]
+_CATEGORY_LABELS = {
+    "faq": "FAQ",
+    "guide": "User Guide",
+    "blog": "Blog",
+    "prevention": "Prevention Hub",
+    "contact": "Contact Us",
+}
+
+
+def _file_category(stem: str) -> str:
+    s = stem.lower().replace("_", "-")
+    for key, cat in _CATEGORY_STEMS.items():
+        if key in s:
+            return cat
+    return "other"
+
 
 def _url_depth(url: str) -> int:
     """Count meaningful path segments — more segments = more specific page."""
@@ -233,12 +262,12 @@ def _url_live(url: str) -> bool:
 def _load_sections() -> list[dict]:
     """
     Parse all scraped markdown files into a flat list of candidate sections.
-    Each entry: {title, url, text, depth}
+    Each entry: {title, url, text, depth, source}
     """
     sections = []
     seen_urls: set[str] = set()
 
-    def _add(title: str, url: str, text: str):
+    def _add(title: str, url: str, text: str, source: str = "other"):
         url = url.strip().rstrip(")").rstrip("'\"")
         # Skip overly broad index pages and duplicates
         if not url.startswith("https://www.belairdirect.com"):
@@ -254,11 +283,13 @@ def _load_sections() -> list[dict]:
             "url": url,
             "text": text.lower(),
             "depth": _url_depth(url),
+            "source": source,
         })
 
     _SKIP_TITLES = {"sublinks found", "main page content", "blog main page content"}
 
     for md_file in sorted(_SCRAPED_DIR.glob("*.md")):
+        source = _file_category(md_file.stem)
         content = md_file.read_text(encoding="utf-8")
 
         # ── Sublinks Found block: "- Title: URL"
@@ -273,7 +304,7 @@ def _load_sections() -> list[dict]:
                     content, re.DOTALL
                 )
                 body = body_m.group(1) if body_m else title
-                _add(title, url, f"{title} {body}")
+                _add(title, url, f"{title} {body}", source)
 
         # ── Full section blocks (## heading + **URL:** …)
         for part in content.split("---"):
@@ -281,7 +312,7 @@ def _load_sections() -> list[dict]:
             title_m = re.search(r"^##\s+(.+)$", part, re.MULTILINE)
             if url_m and title_m:
                 if title_m.group(1).strip().lower() not in _SKIP_TITLES:
-                    _add(title_m.group(1), url_m.group(1), part)
+                    _add(title_m.group(1), url_m.group(1), part, source)
 
         # ── Also index ### subsections of the main FAQ page for specific topics
         if "faq" in md_file.name:
@@ -293,7 +324,7 @@ def _load_sections() -> list[dict]:
                     start = heading_m.end()
                     next_m = re.search(r"^###", content[start:], re.MULTILINE)
                     body = content[start: start + (next_m.start() if next_m else 400)]
-                    _add(h, faq_url, f"{h} {body}")
+                    _add(h, faq_url, f"{h} {body}", source)
 
     return sections
 
@@ -316,9 +347,9 @@ _LIVE_URLS: set = _build_live_url_cache()
 @tool
 def search_belair_docs(query: str) -> str:
     """
-    Search the Belair Direct knowledge base (scraped website content) for the
-    most specific pages relevant to the client's question. Validates each URL
-    before returning it. Returns the top 3 confirmed-live links.
+    Search the Belair Direct knowledge base for pages relevant to the client's question.
+    Returns the best confirmed-live link from each content category:
+    FAQ, User Guide, Blog, Prevention Hub, and Contact Us.
 
     Use this whenever the client asks a question about car insurance, coverage,
     discounts, claims, payments, the automerit program, or any Belair service.
@@ -355,33 +386,29 @@ def search_belair_docs(query: str) -> str:
         slug_score  = _slug_match(sec["url"])
         total = body_score + title_score + url_score
         if total > 0:
-            # Sort key: (total, slug_match, depth) — slug_match breaks ties
             scored.append((total, slug_score, sec["depth"], sec))
 
     # Sort: total score desc, slug_match desc, depth desc
     scored.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
 
-    # Collect up to 3 live, diverse results
-    results = []
-    seen_urls = set()
-    blog_count = 0  # cap blog articles at 2 to ensure diversity
+    # Pick the best live result from each category
+    best_by_cat: dict = {}
+    seen_urls: set = set()
 
     for _, _, _, sec in scored:
-        if sec["url"] in seen_urls:
-            continue
-        if sec["url"] not in _LIVE_URLS:
-            continue
-
-        is_blog = "/blog/" in sec["url"]
-        if is_blog and blog_count >= 2:
-            continue  # prefer specific product/guide pages over a 3rd blog post
-
-        results.append({"title": sec["title"], "url": sec["url"]})
-        seen_urls.add(sec["url"])
-        if is_blog:
-            blog_count += 1
-        if len(results) == 3:
+        cat = sec["source"]
+        if cat in _RESULT_CATEGORIES and cat not in best_by_cat:
+            if sec["url"] in _LIVE_URLS and sec["url"] not in seen_urls:
+                best_by_cat[cat] = sec
+                seen_urls.add(sec["url"])
+        if len(best_by_cat) == len(_RESULT_CATEGORIES):
             break
+
+    results = [
+        {"category": _CATEGORY_LABELS[cat], "title": best_by_cat[cat]["title"], "url": best_by_cat[cat]["url"]}
+        for cat in _RESULT_CATEGORIES
+        if cat in best_by_cat
+    ]
 
     if not results:
         return json.dumps({"results": [], "message": "No verified links found for this query."})
