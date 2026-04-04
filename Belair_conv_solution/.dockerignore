@@ -4,7 +4,6 @@ backend/belair.db*
 backend/static
 frontend/node_modules
 frontend/dist.zip
-scraped
 *.png
 *.pdf
 *.zip

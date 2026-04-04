@@ -22,6 +22,9 @@ COPY backend/ ./
 # Copy form schema (tools.py resolves 3 levels up from /app/agent/ → /)
 COPY belair_quote_form.json /belair_quote_form.json
 
+# Copy scraped knowledge base (tools.py resolves to /scraped)
+COPY scraped/ /scraped/
+
 # Copy built frontend into backend/static (where FastAPI serves it from)
 COPY --from=frontend-build /app/backend/static ./static
 
