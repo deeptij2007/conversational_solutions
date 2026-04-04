@@ -43,12 +43,40 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from agent.graph import build_graph
 from db import FormDatabase
 
-_DB_PATH = str(Path(__file__).parent / "belair.db")
+import os
+_DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent / "belair.db"))
 # Dev: Vite serves on :3000 and proxies /api + /ws to here.
 # Prod: `npm run build` outputs to backend/static — served below.
 _STATIC_DIR = Path(__file__).parent / "static"
 
 db = FormDatabase(_DB_PATH)
+
+# Agreement fields that need agent guidance when checked directly
+_AGREEMENT_FIELDS = {"terms_agreement", "contact_permission", "soft_credit_check"}
+
+
+def _msg_text(msg) -> str:
+    """Safely extract plain text from an AIMessage (content may be str or list of blocks)."""
+    content = getattr(msg, "content", "") or ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        return " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+    return str(content).strip()
+
+
+def _last_text(messages: list) -> str:
+    """Return the last non-empty assistant text from a message list (scans in reverse)."""
+    from langchain_core.messages import AIMessage
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            text = _msg_text(msg)
+            if text:
+                return text
+    return ""
 
 
 # ── Lifespan: own the async SQLite connection for the checkpointer ────────────
@@ -93,17 +121,25 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     try:
         # ── Initial greeting ──────────────────────────────────────────────────
-        # Brief, non-intrusive intro — agent does NOT start asking questions.
-        greeting = (
-            f"[SESSION_ID: {session_id}] "
-            + (
-                "The client has just opened the quote form for the first time."
-                if is_new
-                else "The client has returned to continue their quote."
+        _init_answers = db.get_form_answers(session_id)
+        _init_step    = db.get_position(session_id).get("current_step", 1)
+        _init_state   = json.dumps({"current_step": _init_step, "answers": _init_answers})
+
+        if is_new:
+            greeting_body = (
+                "New session. Greet the client warmly in one sentence, "
+                "then immediately ask the first question of Step 1."
             )
-        )
+        else:
+            greeting_body = (
+                "The client has returned. Welcome them back in one sentence "
+                "(mention how many fields are filled), then ask the next "
+                "unanswered question from [FORM_STATE]."
+            )
+
+        greeting = f"[SESSION_ID: {session_id}] [FORM_STATE: {_init_state}] {greeting_body}"
         result = await graph.ainvoke({"messages": [HumanMessage(content=greeting)]}, config)
-        assistant_text = result["messages"][-1].content
+        assistant_text = _last_text(result["messages"])
 
         await websocket.send_json({
             "type": "init",
@@ -121,9 +157,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 if not user_text:
                     continue
 
+                # Inject fresh form state so the agent always sees the latest
+                # answers — including any fields the client filled directly in
+                # the form between chat messages.
+                _answers = db.get_form_answers(session_id)
+                _step    = db.get_position(session_id).get("current_step", 1)
+                _state   = json.dumps({"current_step": _step, "answers": _answers})
+                _content = f"[SESSION_ID: {session_id}] [FORM_STATE: {_state}] {user_text}"
+
                 final_text = ""
                 async for event in graph.astream_events(
-                    {"messages": [HumanMessage(content=f"[SESSION_ID: {session_id}] {user_text}")]},
+                    {"messages": [HumanMessage(content=_content)]},
                     config,
                     version="v2",
                 ):
@@ -169,21 +213,70 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     "form_state": db.get_full_state(session_id),
                 })
 
+            elif msg_type == "step_advance":
+                # Client clicked Continue — update position, then have the agent
+                # ask the first unanswered question of the new step.
+                step = int(data.get("step", 1))
+                db.update_position(session_id, step, 0)
+
+                _adv_answers  = db.get_form_answers(session_id)
+                _adv_state    = json.dumps({"current_step": step, "answers": _adv_answers})
+                # Compute which fields in this step are still unanswered so the
+                # prompt is unambiguous — the agent must never re-ask filled fields.
+                _adv_content = (
+                    f"[SESSION_ID: {session_id}] [FORM_STATE: {_adv_state}] "
+                    f"The client pressed Continue and is now on Step {step}. "
+                    f"IMPORTANT: [FORM_STATE].answers is the authoritative list of "
+                    f"everything already filled — DO NOT ask about any field_id that "
+                    f"already appears in [FORM_STATE].answers, including agreement fields. "
+                    f"Find the first field in Step {step} whose id is NOT in "
+                    f"[FORM_STATE].answers and ask only that question. "
+                    f"If every required field in Step {step} is already in "
+                    f"[FORM_STATE].answers, skip straight to the review prompt."
+                )
+
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content=_adv_content)]}, config
+                )
+                await websocket.send_json({
+                    "type": "message",
+                    "message": {"role": "assistant", "content": _last_text(result["messages"])},
+                    "form_state": db.get_full_state(session_id),
+                })
+
             elif msg_type == "form_edit":
-                # Client filled a field directly — save silently, NO agent invocation.
-                # The agent stays aware via get_current_state when next addressed.
                 field_id = data.get("field_id", "")
-                value = data.get("value", "")
+                value    = data.get("value", "")
                 if not field_id:
                     continue
 
                 db.update_answer(session_id, field_id, value)
 
-                # Return updated form state only — no chat bubble.
                 await websocket.send_json({
                     "type": "state_update",
                     "form_state": db.get_full_state(session_id),
                 })
+
+                # Agreement checkboxes need agent guidance — they are silent form edits
+                # but the bot must acknowledge each one and prompt for the next.
+                if field_id in _AGREEMENT_FIELDS and value:
+                    _agr_answers = db.get_form_answers(session_id)
+                    _agr_state   = json.dumps({"current_step": 6, "answers": _agr_answers})
+                    _agr_content = (
+                        f"[SESSION_ID: {session_id}] [FORM_STATE: {_agr_state}] "
+                        f"The client just checked the '{field_id}' agreement in the form. "
+                        f"Acknowledge it briefly, then check [FORM_STATE].answers: "
+                        f"if there are unchecked agreements, ask about the next one; "
+                        f"if all three are checked, tell them to click **Get Your Price**."
+                    )
+                    result = await graph.ainvoke(
+                        {"messages": [HumanMessage(content=_agr_content)]}, config
+                    )
+                    await websocket.send_json({
+                        "type": "message",
+                        "message": {"role": "assistant", "content": _last_text(result["messages"])},
+                        "form_state": db.get_full_state(session_id),
+                    })
 
     except WebSocketDisconnect:
         pass

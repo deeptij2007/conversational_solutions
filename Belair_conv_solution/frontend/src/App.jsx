@@ -10,30 +10,11 @@ export default function App() {
 
   useEffect(() => {
     async function bootstrap() {
-      // Restore or create session
-      let sid = localStorage.getItem('belair_session_id')
-      if (sid) {
-        // Verify session still exists on server
-        const res = await fetch(`/api/state/${sid}`)
-        if (!res.ok) {
-          sid = null
-        } else {
-          const state = await res.json()
-          // Start fresh if the client already completed and submitted the form
-          if (state.answers?.soft_credit_check) {
-            localStorage.removeItem('belair_session_id')
-            sid = null
-          }
-        }
-      }
-      if (!sid) {
-        const res = await fetch('/api/session/new')
-        const data = await res.json()
-        sid = data.session_id
-        localStorage.setItem('belair_session_id', sid)
-      }
-      initSession(sid)
-      setSessionId(sid)
+      // Always start a fresh session — no memory carried over from previous visits
+      const res = await fetch('/api/session/new')
+      const data = await res.json()
+      initSession(data.session_id)
+      setSessionId(data.session_id)
     }
     bootstrap()
   }, [])

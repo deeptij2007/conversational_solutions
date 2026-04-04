@@ -192,6 +192,8 @@ export default function FormPanel() {
   const highlightedField = useFormStore((s) => s.highlightedField)
   const setViewStep      = useFormStore((s) => s.setViewStep)
   const setQuotePrice    = useFormStore((s) => s.setQuotePrice)
+  const ws               = useFormStore((s) => s.ws)
+  const setTyping        = useFormStore((s) => s.setTyping)
 
   const total  = FORM_SCHEMA.reduce((n, s) => n + s.fields.filter((f) => f.required !== false).length, 0)
   const filled = FORM_SCHEMA.reduce((n, s) => n + s.fields.filter((f) => f.required !== false && answers[f.id]).length, 0)
@@ -211,7 +213,12 @@ export default function FormPanel() {
       setQuotePrice(Math.floor(Math.random() * 101) + 200)
       setViewStep(TOTAL_STEPS + 1)
     } else {
-      setViewStep(viewStep + 1)
+      const nextStep = viewStep + 1
+      setViewStep(nextStep)
+      if (ws?.readyState === WebSocket.OPEN) {
+        setTyping(true)
+        ws.send(JSON.stringify({ type: 'step_advance', step: nextStep }))
+      }
     }
   }
 
