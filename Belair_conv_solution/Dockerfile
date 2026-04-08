@@ -16,6 +16,13 @@ WORKDIR /app
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download the FastEmbed ONNX model so it's baked into the image
+# (no PyTorch needed — ONNX runtime only, ~100 MB RAM at runtime)
+RUN python -c "\
+from fastembed import TextEmbedding; \
+list(TextEmbedding(model_name='BAAI/bge-small-en-v1.5').embed(['warmup'])); \
+print('FastEmbed model cached.')"
+
 # Copy backend
 COPY backend/ ./
 

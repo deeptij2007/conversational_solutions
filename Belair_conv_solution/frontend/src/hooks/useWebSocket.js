@@ -12,6 +12,7 @@ import { getActiveStep } from '../constants/schema'
 export function useWebSocket(sessionId) {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
+  const pingTimer = useRef(null)
   const { setWs, setWsStatus, addMessage, setTyping, applyFormState, setAnswer, setViewStep } =
     useFormStore.getState()
 
@@ -29,6 +30,11 @@ export function useWebSocket(sessionId) {
       ws.onopen = () => {
         setWsStatus('connected')
         clearTimeout(reconnectTimer.current)
+        // Send a ping every 30 s to prevent Fly proxy from dropping idle connections
+        clearInterval(pingTimer.current)
+        pingTimer.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }))
+        }, 30_000)
       }
 
       ws.onmessage = (e) => {
@@ -48,6 +54,22 @@ export function useWebSocket(sessionId) {
             setTyping(false)
             addMessage({ role: 'assistant', content: data.message.content })
             applyFormState(data.form_state)
+            // Only refresh quote price when a premium-relevant field was actually updated
+            if (useFormStore.getState().quotePrice !== null && data.price_relevant_changed) {
+              const newPrice = Math.floor(Math.random() * 101) + 200
+              useFormStore.getState().setQuotePrice(newPrice)
+              const currentWs = useFormStore.getState().ws
+              if (currentWs?.readyState === WebSocket.OPEN) {
+                useFormStore.getState().setTyping(true)
+                currentWs.send(JSON.stringify({ type: 'quote_shown', price: newPrice, is_refresh: true }))
+              }
+            }
+            break
+
+          case 'price_confirmed':
+            // Bot confirmed the quote price — show bubble only, no further price refresh
+            setTyping(false)
+            addMessage({ role: 'assistant', content: data.message.content })
             break
 
           case 'state_update':
@@ -73,6 +95,7 @@ export function useWebSocket(sessionId) {
       ws.onerror = () => setWsStatus('error')
 
       ws.onclose = () => {
+        clearInterval(pingTimer.current)
         setWsStatus('disconnected')
         reconnectTimer.current = setTimeout(connect, 3000)
       }
@@ -82,6 +105,7 @@ export function useWebSocket(sessionId) {
 
     return () => {
       clearTimeout(reconnectTimer.current)
+      clearInterval(pingTimer.current)
       wsRef.current?.close()
     }
   }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps

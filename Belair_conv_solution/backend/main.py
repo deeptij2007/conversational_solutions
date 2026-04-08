@@ -54,6 +54,11 @@ db = FormDatabase(_DB_PATH)
 # Agreement fields that need agent guidance when checked directly
 _AGREEMENT_FIELDS = {"terms_agreement", "contact_permission", "soft_credit_check"}
 
+# Fields that do NOT affect the premium — changing them must not trigger a price refresh
+_NON_PREMIUM_FIELDS = {
+    "first_name", "last_name", "email", "phone_type", "phone_number", "contact_permission"
+}
+
 
 def _msg_text(msg) -> str:
     """Safely extract plain text from an AIMessage (content may be str or list of blocks)."""
@@ -93,6 +98,12 @@ app = FastAPI(title="Belair Direct Quote Assistant", lifespan=lifespan)
 
 
 # ── REST ──────────────────────────────────────────────────────────────────────
+
+@app.get("/api/config")
+def get_config():
+    """Return runtime config values the frontend needs (e.g. API keys)."""
+    return {"google_maps_key": os.environ.get("GOOGLE_MAPS_KEY", "")}
+
 
 @app.get("/api/session/new")
 def new_session():
@@ -153,19 +164,24 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             msg_type = data.get("type")
 
             if msg_type == "message":
-                user_text = data.get("content", "").strip()
+                user_text    = data.get("content", "").strip()
+                on_quote_page = bool(data.get("on_quote_page", False))
                 if not user_text:
                     continue
 
                 # Inject fresh form state so the agent always sees the latest
                 # answers — including any fields the client filled directly in
                 # the form between chat messages.
-                _answers = db.get_form_answers(session_id)
-                _step    = db.get_position(session_id).get("current_step", 1)
-                _state   = json.dumps({"current_step": _step, "answers": _answers})
+                _answers    = db.get_form_answers(session_id)
+                _step       = db.get_position(session_id).get("current_step", 1)
+                _state_dict = {"current_step": _step, "answers": _answers}
+                if on_quote_page:
+                    _state_dict["on_quote_page"] = True
+                _state   = json.dumps(_state_dict)
                 _content = f"[SESSION_ID: {session_id}] [FORM_STATE: {_state}] {user_text}"
 
-                final_text = ""
+                final_text    = ""
+                updated_fields = []
                 async for event in graph.astream_events(
                     {"messages": [HumanMessage(content=_content)]},
                     config,
@@ -184,6 +200,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 parsed = json.loads(raw)
                                 saved = parsed.get("saved", {})
                                 if saved.get("field_id"):
+                                    updated_fields.append(saved["field_id"])
                                     await websocket.send_json({
                                         "type": "form_update",
                                         "field_id": saved["field_id"],
@@ -207,10 +224,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 if text:
                                     final_text = text
 
+                price_relevant_changed = any(
+                    f not in _NON_PREMIUM_FIELDS for f in updated_fields
+                )
                 await websocket.send_json({
                     "type": "message",
                     "message": {"role": "assistant", "content": final_text},
                     "form_state": db.get_full_state(session_id),
+                    "price_relevant_changed": price_relevant_changed,
                 })
 
             elif msg_type == "step_advance":
@@ -223,17 +244,26 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 _adv_state    = json.dumps({"current_step": step, "answers": _adv_answers})
                 # Compute which fields in this step are still unanswered so the
                 # prompt is unambiguous — the agent must never re-ask filled fields.
-                _adv_content = (
-                    f"[SESSION_ID: {session_id}] [FORM_STATE: {_adv_state}] "
-                    f"The client pressed Continue and is now on Step {step}. "
-                    f"IMPORTANT: [FORM_STATE].answers is the authoritative list of "
-                    f"everything already filled — DO NOT ask about any field_id that "
-                    f"already appears in [FORM_STATE].answers, including agreement fields. "
-                    f"Find the first field in Step {step} whose id is NOT in "
-                    f"[FORM_STATE].answers and ask only that question. "
-                    f"If every required field in Step {step} is already in "
-                    f"[FORM_STATE].answers, skip straight to the review prompt."
-                )
+                if step == 5:
+                    # Step 5 = agreements: keep the original guided behaviour
+                    _adv_content = (
+                        f"[SESSION_ID: {session_id}] [FORM_STATE: {_adv_state}] "
+                        f"The client pressed Continue and is now on Step {step}. "
+                        f"IMPORTANT: [FORM_STATE].answers is authoritative — DO NOT ask about "
+                        f"any field_id already in [FORM_STATE].answers, including agreement fields. "
+                        f"Find the first agreement field in Step 5 whose id is NOT in "
+                        f"[FORM_STATE].answers and ask only that question. "
+                        f"If every agreement is already answered, tell the client to click **Get Your Price**."
+                    )
+                else:
+                    # All other steps: introduce the topic AND immediately ask the first question
+                    _adv_content = (
+                        f"[SESSION_ID: {session_id}] [FORM_STATE: {_adv_state}] "
+                        f"The client pressed Continue and is now on Step {step}. "
+                        f"In one short sentence introduce what Step {step} covers, "
+                        f"then immediately ask the first unanswered required field of Step {step}. "
+                        f"Do NOT ask any field already answered in [FORM_STATE].answers."
+                    )
 
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content=_adv_content)]}, config
@@ -243,6 +273,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     "message": {"role": "assistant", "content": _last_text(result["messages"])},
                     "form_state": db.get_full_state(session_id),
                 })
+
+            elif msg_type == "quote_shown":
+                price = int(data.get("price", 0))
+                # Send the fixed-format price message directly — no LLM call needed
+                await websocket.send_json({
+                    "type": "price_confirmed",
+                    "message": {
+                        "role": "assistant",
+                        "content": f"Based on your information, your estimated monthly premium is **${price}/month**.",
+                    },
+                })
+
+            elif msg_type == "ping":
+                continue  # keepalive — no response needed
 
             elif msg_type == "form_edit":
                 field_id = data.get("field_id", "")
@@ -261,7 +305,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 # but the bot must acknowledge each one and prompt for the next.
                 if field_id in _AGREEMENT_FIELDS and value:
                     _agr_answers = db.get_form_answers(session_id)
-                    _agr_state   = json.dumps({"current_step": 6, "answers": _agr_answers})
+                    _agr_state   = json.dumps({"current_step": 5, "answers": _agr_answers})
                     _agr_content = (
                         f"[SESSION_ID: {session_id}] [FORM_STATE: {_agr_state}] "
                         f"The client just checked the '{field_id}' agreement in the form. "

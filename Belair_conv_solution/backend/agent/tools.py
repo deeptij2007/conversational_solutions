@@ -4,7 +4,7 @@ All form knowledge comes exclusively from belair_quote_form.json.
 State is read/written through FormDatabase — never invented by the agent.
 """
 import json
-import re
+import os
 from pathlib import Path
 from langchain_core.tools import tool
 from db import FormDatabase
@@ -15,7 +15,10 @@ _SCHEMA_PATH = Path(__file__).parent.parent.parent / "belair_quote_form.json"
 with open(_SCHEMA_PATH, encoding="utf-8") as _f:
     FORM_SCHEMA: dict = json.load(_f)
 
-db = FormDatabase()
+# Must use the same DB path as main.py so bot-saved answers are visible to the
+# form_state that main.py reads back and sends to the frontend.
+_DB_PATH = os.environ.get("DB_PATH", str(Path(__file__).parent.parent / "belair.db"))
+db = FormDatabase(_DB_PATH)
 
 
 def _flatten_questions() -> list[dict]:
@@ -188,231 +191,30 @@ def get_question_info(field_id: str) -> str:
     )
 
 
-import requests as _requests
-from concurrent.futures import ThreadPoolExecutor as _TPE
-
-_SCRAPED_DIR = Path(__file__).parent.parent.parent / "scraped"
-
-_STOP_WORDS = {
-    "a","an","the","is","it","in","on","at","to","for","of","and","or","i",
-    "my","your","what","how","do","does","can","will","be","are","was","has",
-    "have","about","with","this","that","they","we","you","me","if","any",
-    "get","its","by","as","so","am","would","could","should","not","no",
-}
-
-_BROWSER_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,*/*",
-}
-
-# Maps filename stem keywords → category key
-_CATEGORY_STEMS = {
-    "faq": "faq",
-    "user-guide": "guide",
-    "userguide": "guide",
-    "blog": "blog",
-    "prevention-hub": "prevention",
-    "preventionhub": "prevention",
-    "contact-us": "contact",
-    "contactus": "contact",
-}
-
-_RESULT_CATEGORIES = ["faq", "guide", "blog", "prevention", "contact"]
-_CATEGORY_LABELS = {
-    "faq": "FAQ",
-    "guide": "User Guide",
-    "blog": "Blog",
-    "prevention": "Prevention Hub",
-    "contact": "Contact Us",
-}
-
-
-def _file_category(stem: str) -> str:
-    s = stem.lower().replace("_", "-")
-    for key, cat in _CATEGORY_STEMS.items():
-        if key in s:
-            return cat
-    return "other"
-
-
-def _url_depth(url: str) -> int:
-    """Count meaningful path segments — more segments = more specific page."""
-    from urllib.parse import urlparse
-    parts = [p for p in urlparse(url).path.split("/") if p and p not in ("en",)]
-    return len(parts)
-
-
-def _url_live(url: str) -> bool:
-    """Return True if the URL responds with HTTP 200 (GET, no body downloaded)."""
-    try:
-        resp = _requests.get(
-            url, headers=_BROWSER_HEADERS, timeout=6,
-            stream=True, allow_redirects=True
-        )
-        resp.close()
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def _load_sections() -> list[dict]:
-    """
-    Parse all scraped markdown files into a flat list of candidate sections.
-    Each entry: {title, url, text, depth, source}
-    """
-    sections = []
-    seen_urls: set[str] = set()
-
-    def _add(title: str, url: str, text: str, source: str = "other"):
-        url = url.strip().rstrip(")").rstrip("'\"")
-        # Skip overly broad index pages and duplicates
-        if not url.startswith("https://www.belairdirect.com"):
-            return
-        if url in seen_urls:
-            return
-        if url.rstrip("/").endswith(("?province=QCENT", "/blog",
-                                     "/user-guide.html", "/prevention-hub.html")):
-            return  # pure listing pages — skip
-        seen_urls.add(url)
-        sections.append({
-            "title": title.strip(),
-            "url": url,
-            "text": text.lower(),
-            "depth": _url_depth(url),
-            "source": source,
-        })
-
-    _SKIP_TITLES = {"sublinks found", "main page content", "blog main page content"}
-
-    for md_file in sorted(_SCRAPED_DIR.glob("*.md")):
-        source = _file_category(md_file.stem)
-        content = md_file.read_text(encoding="utf-8")
-
-        # ── Sublinks Found block: "- Title: URL"
-        sublinks_block = re.search(
-            r"## Sublinks Found\n(.*?)(?=\n---|\Z)", content, re.DOTALL
-        )
-        if sublinks_block:
-            for m in re.finditer(r"-\s+(.+?):\s+(https?://\S+)", sublinks_block.group(1)):
-                title, url = m.group(1), m.group(2).strip()
-                body_m = re.search(
-                    rf"\*\*URL:\*\*\s*{re.escape(url)}\s*\n(.*?)(?=\n---|\Z)",
-                    content, re.DOTALL
-                )
-                body = body_m.group(1) if body_m else title
-                _add(title, url, f"{title} {body}", source)
-
-        # ── Full section blocks (## heading + **URL:** …)
-        for part in content.split("---"):
-            url_m   = re.search(r"\*\*(?:Main )?URL:\*\*\s*(https?://\S+)", part)
-            title_m = re.search(r"^##\s+(.+)$", part, re.MULTILINE)
-            if url_m and title_m:
-                if title_m.group(1).strip().lower() not in _SKIP_TITLES:
-                    _add(title_m.group(1), url_m.group(1), part, source)
-
-        # ── Also index ### subsections of the main FAQ page for specific topics
-        if "faq" in md_file.name:
-            faq_url = "https://www.belairdirect.com/en/faq.html"
-            for heading_m in re.finditer(r"^###\s+(.+)$", content, re.MULTILINE):
-                h = heading_m.group(1).strip()
-                if len(h) > 10 and h.lower() not in _SKIP_TITLES:
-                    # Find text following this heading until next ###
-                    start = heading_m.end()
-                    next_m = re.search(r"^###", content[start:], re.MULTILINE)
-                    body = content[start: start + (next_m.start() if next_m else 400)]
-                    _add(h, faq_url, f"{h} {body}", source)
-
-    return sections
-
-
-# ── Pre-validate all known URLs once at startup (parallel) ────────────────────
-
-def _build_live_url_cache() -> set:
-    if not _SCRAPED_DIR.exists():
-        return set()
-    sections = _load_sections()
-    all_urls = list({s["url"] for s in sections})
-    with _TPE(max_workers=12) as ex:
-        results = list(ex.map(_url_live, all_urls))
-    return {u for u, ok in zip(all_urls, results) if ok}
-
-
-_LIVE_URLS: set = _build_live_url_cache()
+from agent.rag import search as _rag_search
 
 
 @tool
 def search_belair_docs(query: str) -> str:
     """
-    Search the Belair Direct knowledge base for pages relevant to the client's question.
-    Returns the best confirmed-live link from each content category:
-    FAQ, User Guide, Blog, Prevention Hub, and Contact Us.
+    Semantic search over the Belair Direct knowledge base (FAQ, Blog, Prevention Hub, Tooltips).
+    Returns up to 10 relevant results. FAQ results include the full question-answer pair.
 
-    Use this whenever the client asks a question about car insurance, coverage,
-    discounts, claims, payments, the automerit program, or any Belair service.
-    Do NOT invent answers — only return the links found here.
+    ALWAYS call this tool when the client asks any question about car insurance,
+    coverage, discounts, claims, payments, anti-theft, driving programs, or any
+    Belair-related topic. Never answer from general knowledge.
 
     Args:
         query: The client's question or topic (plain text).
+
+    Returns JSON with a "results" list. Each item has:
+        - text, url, source  (always present)
+        - faq_question, faq_answer  (only for FAQ results)
+        - tooltip_question, tooltip_info  (only for Tooltip results)
     """
-    if not _SCRAPED_DIR.exists():
-        return json.dumps({"error": "Knowledge base not available."})
-
-    sections = _load_sections()
-    if not sections:
-        return json.dumps({"results": [], "message": "No documents found."})
-
-    query_words = set(re.findall(r"\w+", query.lower())) - _STOP_WORDS
-
-    def _slug_match(url: str) -> int:
-        """Count query words that are a prefix-match of any word in the URL slug."""
-        from urllib.parse import urlparse
-        slug_words = re.findall(r"\w+", urlparse(url).path.lower())
-        return sum(
-            1 for q in query_words
-            for sw in slug_words
-            if sw.startswith(q) or q.startswith(sw[:max(4, len(q))])
-        )
-
-    # Score: body match + bonus for title/URL keyword match + slug prefix match
-    scored = []
-    for sec in sections:
-        body_score  = sum(1 for w in query_words if w in sec["text"])
-        title_score = sum(2 for w in query_words if w in sec["title"].lower())
-        url_score   = sum(2 for w in query_words if w in sec["url"].lower())
-        slug_score  = _slug_match(sec["url"])
-        total = body_score + title_score + url_score
-        if total > 0:
-            scored.append((total, slug_score, sec["depth"], sec))
-
-    # Sort: total score desc, slug_match desc, depth desc
-    scored.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
-
-    # Pick the best live result from each category
-    best_by_cat: dict = {}
-    seen_urls: set = set()
-
-    for _, _, _, sec in scored:
-        cat = sec["source"]
-        if cat in _RESULT_CATEGORIES and cat not in best_by_cat:
-            if sec["url"] in _LIVE_URLS and sec["url"] not in seen_urls:
-                best_by_cat[cat] = sec
-                seen_urls.add(sec["url"])
-        if len(best_by_cat) == len(_RESULT_CATEGORIES):
-            break
-
-    results = [
-        {"category": _CATEGORY_LABELS[cat], "title": best_by_cat[cat]["title"], "url": best_by_cat[cat]["url"]}
-        for cat in _RESULT_CATEGORIES
-        if cat in best_by_cat
-    ]
-
+    results = _rag_search(query, k=3)
     if not results:
-        return json.dumps({"results": [], "message": "No verified links found for this query."})
-
+        return json.dumps({"results": []})
     return json.dumps({"results": results}, ensure_ascii=False)
 
 

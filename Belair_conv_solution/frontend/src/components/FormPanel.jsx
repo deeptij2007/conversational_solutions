@@ -1,10 +1,11 @@
 import { Fragment, useState } from 'react'
 import useFormStore from '../store/useFormStore'
-import { FORM_SCHEMA } from '../constants/schema'
-import RadioField   from './fields/RadioField'
-import TextField    from './fields/TextField'
-import SelectField  from './fields/SelectField'
-import DateField    from './fields/DateField'
+import { FORM_SCHEMA, isFieldVisible } from '../constants/schema'
+import RadioField    from './fields/RadioField'
+import TextField     from './fields/TextField'
+import SelectField   from './fields/SelectField'
+import DateField     from './fields/DateField'
+
 
 const TOTAL_STEPS = FORM_SCHEMA.length
 
@@ -203,15 +204,20 @@ export default function FormPanel() {
   const currentStepDef = isQuotePage ? null : FORM_SCHEMA.find((s) => s.step === viewStep)
   const isLastStep     = viewStep === TOTAL_STEPS
 
-  // Step complete = all required fields answered
+  // Step complete = all required visible fields answered
   const stepComplete = currentStepDef?.fields
-    .filter((f) => f.required !== false)
+    .filter((f) => f.required !== false && isFieldVisible(f, answers))
     .every((f) => answers[f.id])
 
   function handleContinue() {
     if (isLastStep) {
-      setQuotePrice(Math.floor(Math.random() * 101) + 200)
+      const price = Math.floor(Math.random() * 101) + 200
+      setQuotePrice(price)
       setViewStep(TOTAL_STEPS + 1)
+      if (ws?.readyState === WebSocket.OPEN) {
+        setTyping(true)
+        ws.send(JSON.stringify({ type: 'quote_shown', price }))
+      }
     } else {
       const nextStep = viewStep + 1
       setViewStep(nextStep)
@@ -291,43 +297,67 @@ export default function FormPanel() {
 
             {/* Fields */}
             <div className="step-fields">
-              {currentStepDef?.fields.map((field) => {
+              {currentStepDef?.fields.map((field, idx) => {
+                // Hide fields whose visibleWhen condition is not met
+                if (!isFieldVisible(field, answers)) return null
+
                 const isAnswered     = Boolean(answers[field.id])
                 const isCurrentField = field.id === activeFieldId && viewStep === activeStep
                 const isHighlighted  = field.id === highlightedField
                 const isAgreement    = field.type === 'agreement'
 
+                // Render a section header before the first field in a new section
+                const prevField = currentStepDef.fields[idx - 1]
+                const showSection = field.section && field.section !== prevField?.section
+
+                const showSavingsMsg =
+                  field.savingsMessage &&
+                  answers[field.id] &&
+                  answers[field.id] !== 'Less than 1 year'
+
                 if (isAgreement) {
                   return (
-                    <div key={field.id} className={`field-row field-row--agreement${isHighlighted ? ' field-highlighted' : ''}`}>
-                      <FieldRenderer field={field} />
-                    </div>
+                    <Fragment key={field.id}>
+                      {showSection && (
+                        <div className="field-section-header">{field.section}</div>
+                      )}
+                      <div className={`field-row field-row--agreement${isHighlighted ? ' field-highlighted' : ''}`}>
+                        <FieldRenderer field={field} />
+                      </div>
+                    </Fragment>
                   )
                 }
 
                 return (
-                  <div
-                    key={field.id}
-                    className={[
-                      'field-row',
-                      isCurrentField ? 'field-row--current'  : '',
-                      isAnswered     ? 'field-row--answered'  : '',
-                      isHighlighted  ? 'field-highlighted'    : '',
-                      field.required === false ? 'field-row--optional' : '',
-                    ].filter(Boolean).join(' ')}
-                  >
-                    <div className="field-label-row">
-                      <label className="field-label">
-                        {isCurrentField && <span className="field-pulse" />}
-                        {field.label}
-                        {field.required === false && (
-                          <span className="field-optional-tag">optional</span>
-                        )}
-                      </label>
-                      <Tooltip text={field.tooltip} />
+                  <Fragment key={field.id}>
+                    {showSection && (
+                      <div className="field-section-header">{field.section}</div>
+                    )}
+                    <div
+                      className={[
+                        'field-row',
+                        isCurrentField ? 'field-row--current'  : '',
+                        isAnswered     ? 'field-row--answered'  : '',
+                        isHighlighted  ? 'field-highlighted'    : '',
+                        field.required === false ? 'field-row--optional' : '',
+                      ].filter(Boolean).join(' ')}
+                    >
+                      <div className="field-label-row">
+                        <label className="field-label">
+                          {isCurrentField && <span className="field-pulse" />}
+                          {field.label}
+                          {field.required === false && (
+                            <span className="field-optional-tag">optional</span>
+                          )}
+                        </label>
+                        <Tooltip text={field.tooltip} />
+                      </div>
+                      <FieldRenderer field={field} />
+                      {showSavingsMsg && (
+                        <div className="field-savings-msg">{field.savingsMessage}</div>
+                      )}
                     </div>
-                    <FieldRenderer field={field} />
-                  </div>
+                  </Fragment>
                 )
               })}
             </div>
@@ -345,6 +375,7 @@ export default function FormPanel() {
           </div>
         </>
       )}
+
     </aside>
   )
 }

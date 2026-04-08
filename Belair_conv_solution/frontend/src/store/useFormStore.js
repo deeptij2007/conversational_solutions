@@ -87,14 +87,15 @@ const useFormStore = create((set, get) => ({
 
   /**
    * Send a chat message over WebSocket and optimistically add it to the log.
+   * Includes on_quote_page flag so the backend can tailor the agent response.
    */
   sendMessage: (content) => {
-    const { ws } = get()
+    const { ws, quotePrice } = get()
     if (!content.trim() || ws?.readyState !== WebSocket.OPEN) return
     // Show typing indicator only for chat messages (not silent form edits)
     get().addMessage({ role: 'user', content })
     set({ isTyping: true })
-    ws.send(JSON.stringify({ type: 'message', content }))
+    ws.send(JSON.stringify({ type: 'message', content, on_quote_page: quotePrice !== null }))
   },
 }))
 

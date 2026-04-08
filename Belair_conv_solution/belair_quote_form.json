@@ -6,12 +6,14 @@
       "step": 1,
       "title": "Vehicle Information",
       "description": "What would you do without your car? Let us protect it! Quote for residents of the province of Quebec.",
+      "promotional_banner": "Get up to 10% discount — Complete your online quote and save.",
       "questions": [
         {
           "id": "vehicle_year",
           "order": 1,
           "question": "Year",
           "related_info": "Select the year your vehicle was manufactured.",
+          "question_information": "Select the year your vehicle was manufactured. You can find this on your vehicle ownership documents or proof of insurance card.",
           "field_type": "dropdown"
         },
         {
@@ -19,27 +21,45 @@
           "order": 2,
           "question": "Make",
           "related_info": "Select the make (brand) of your vehicle.",
+          "question_information": "You can find the vehicle make on the rear exterior of most cars, on your proof of insurance card (pink slip), or in your vehicle ownership documents. Or, simply provide your VIN instead.",
           "field_type": "dropdown"
         },
         {
           "id": "vehicle_model",
           "order": 3,
           "question": "Model",
-          "related_info": "Select the model of your vehicle. You can also find your vehicle using the VIN (Vehicle Identification Number) for a quick and precise quote.",
+          "related_info": "Select the model of your vehicle.",
+          "question_information": "Select the model of your vehicle. You can also find your vehicle using the VIN (Vehicle Identification Number) for a quick and precise quote.",
           "field_type": "dropdown"
         }
       ],
-      "additional_options": [
-        {
-          "label": "Find your car with the VIN",
-          "description": "For a quick and precise quote",
-          "type": "link"
-        }
-      ]
+      "alternative_input": {
+        "label": "Find your car with the VIN",
+        "description": "For a quick and precise quote",
+        "type": "link",
+        "navigates_to": "step1_vin",
+        "back_label": "Back to initial selection"
+      },
+      "alternative_step": {
+        "id": "step1_vin",
+        "title": "Enter your Serial Number or VIN",
+        "questions": [
+          {
+            "id": "vehicle_vin",
+            "order": 1,
+            "question": "Serial Number or VIN",
+            "related_info": "Enter your Vehicle Identification Number for a quick and precise quote.",
+            "question_information": "You can find the serial or vehicle identification number (VIN) on your registration certificate, in your vehicle ownership documents, on your proof of insurance card (pink slip), on your dashboard or in the left door of your car.",
+            "field_type": "text",
+            "placeholder": "e.g. 1HGBH41JXMN109186",
+            "scan_option": true
+          }
+        ]
+      }
     },
     {
       "step": 2,
-      "title": "Let's get more details",
+      "title": "Vehicle Details",
       "description": "This information will help us customize your coverage.",
       "questions": [
         {
@@ -47,43 +67,80 @@
           "order": 1,
           "question": "Do you use your vehicle to commute to work or school?",
           "related_info": "Indicates whether the vehicle is used for regular commuting purposes.",
+          "question_information": "Accurate commute details are required to help us better understand your daily driving habits. This information is secure and will not be shared with any third party.",
           "field_type": "radio",
-          "options": [
-            "No",
-            "Yes"
-          ]
+          "options": ["No", "Yes"],
+          "conditional": {
+            "trigger_value": "Yes",
+            "shows": "commute_calculator",
+            "commute_calculator": {
+              "title": "Most frequent commute",
+              "description": "Accurate commute details are required to help us better understand your daily driving habits. This information is secure and will not be shared with any third party.",
+              "fields": [
+                {
+                  "id": "home_address",
+                  "label": "Home address",
+                  "field_type": "text"
+                },
+                {
+                  "id": "destination_address",
+                  "label": "Destination address",
+                  "field_type": "text"
+                }
+              ],
+              "map_integration": "Google Maps",
+              "output_field": "one_way_distance",
+              "output_label": "Shortest distance to your destination",
+              "output_unit": "km",
+              "action_label": "Continue"
+            }
+          }
         },
         {
           "id": "yearly_kilometres",
-          "order": 2,
+          "order": 3,
           "question": "Yearly kilometres",
-          "related_info": "Estimated total number of kilometres you expect to drive in a year. More kilometres may affect your premium.",
+          "related_info": "Estimated total number of kilometres you expect to drive in a year.",
+          "question_information": "Enter the kilometres you drive yearly, including your daily commute and road trips for vacation. You don't have to be exact. Just an approximation will do.",
           "field_type": "dropdown",
+          "options": [
+            "Less than 5,000 km",
+            "5,000 to 10,000 km",
+            "10,000 to 15,000 km",
+            "15,000 to 20,000 km",
+            "20,000 to 25,000 km",
+            "More than 25,000 km"
+          ],
           "has_tooltip": true
         },
         {
           "id": "car_condition",
-          "order": 3,
+          "order": 4,
           "question": "Condition of the car when you got it",
           "related_info": "The condition of the vehicle at the time you acquired it affects the type of coverage available.",
+          "question_information": "A dealership uses a demo car for test drives or to showcase its features to customers. They have fewer kilometres on the odometer and are less expensive than buying a brand new car.",
           "field_type": "radio",
-          "options": [
-            "New",
-            "Used",
-            "Demo"
-          ]
+          "options": ["New", "Used", "Demo"]
         },
         {
           "id": "anti_theft_system",
-          "order": 4,
-          "question": "Anti-theft system",
-          "related_info": "You could save more if your car has an anti-theft system. An anti-theft system helps deter theft and may reduce your premium.",
+          "order": 5,
+          "question": "Anti-theft system?",
+          "related_info": "You could save more if your car has an anti-theft system.",
+          "question_information": "You could save more if your car has an anti-theft system.\n\nEngraved parts: A unique code is engraved on main vehicle parts after purchase to easily identify the car if it has been stolen.\n\nSatellite monitoring system: This system is connected to a central surveillance station and helps track a stolen car using GPS or mobile networks.",
           "field_type": "radio",
-          "options": [
-            "No",
-            "Yes"
-          ],
-          "has_tooltip": true
+          "options": ["No", "Yes"],
+          "has_tooltip": true,
+          "tooltip_sections": [
+            {
+              "title": "Engraved parts",
+              "description": "A unique code is engraved on main vehicle parts after purchase to easily identify the car if it has been stolen."
+            },
+            {
+              "title": "Satellite monitoring system",
+              "description": "This system is connected to a central surveillance station and helps track a stolen car using GPS or mobile networks."
+            }
+          ]
         }
       ],
       "promotional_info": "Insure more than one car and you could save 15%"
@@ -91,13 +148,15 @@
     {
       "step": 3,
       "title": "Driver Information",
-      "description": "Your age could unlock a discount! Start by entering the details of the registered owner of at least one of the vehicles you're insuring.",
+      "header": "Over 800,000 Canadians trust us",
+      "description": "Your age could unlock a discount! Start by entering the details of the registered owner of the vehicle.",
       "questions": [
         {
           "id": "first_name",
           "order": 1,
           "question": "First name",
           "related_info": "As it appears on your driver's licence.",
+          "question_information": "Enter your first name exactly as it appears on your driver's licence.",
           "field_type": "text",
           "validation": "First name is required to continue."
         },
@@ -106,19 +165,17 @@
           "order": 2,
           "question": "Last name",
           "related_info": "As it appears on your driver's licence.",
+          "question_information": "Enter your last name exactly as it appears on your driver's licence.",
           "field_type": "text"
         },
         {
           "id": "gender_identity",
           "order": 3,
           "question": "Gender identity",
-          "related_info": "In order to provide an accurate quote, we need to know the gender identity of the individual being insured—as it appears under the Sex listed on their driver's licence. Gender X acknowledges all identities including but not limited to trans, non-binary, two-spirit, and binary people. We're committed to ensuring people of all genders and identities feel safe, welcome, and respected.",
+          "related_info": "As it appears under the Sex listed on your driver's licence.",
+          "question_information": "In order to provide an accurate quote, we need to know the gender identity of the individual being insured — as it appears under the Sex listed on their driver's licence.\n\nGender X acknowledges all identities including but not limited to trans, non-binary, two-spirit, and binary people.\n\nWe're committed to ensuring people of all genders and identities feel safe, welcome, and respected.",
           "field_type": "radio",
-          "options": [
-            "Male",
-            "Female",
-            "X"
-          ],
+          "options": ["Male", "Female", "X"],
           "has_tooltip": true
         },
         {
@@ -126,6 +183,7 @@
           "order": 4,
           "question": "Date of birth",
           "related_info": "Your date of birth is used to calculate your age and determine applicable discounts and pricing.",
+          "question_information": "Your date of birth is used to calculate your age and determine applicable discounts and pricing.",
           "field_type": "date",
           "format": "Month / DD / YYYY"
         },
@@ -133,263 +191,183 @@
           "id": "age_first_licence",
           "order": 5,
           "question": "Age when you got your first driver's licence",
-          "related_info": "Can't remember how old you were when you got your first driver's licence? Don't worry! An approximate age will do.",
+          "related_info": "The age at which you first received a driver's licence affects your driving experience rating.",
+          "question_information": "Can't remember how old you were when you got your first driver's licence? Don't worry! An approximate age will do.",
           "field_type": "number",
           "prompt": "I was ___ years old",
           "has_tooltip": true
+        },
+        {
+          "id": "years_with_insurer",
+          "order": 6,
+          "question": "Number of years with current insurer",
+          "related_info": "The number of continuous years you have been insured with your current insurer.",
+          "question_information": "If you were not covered by a car insurance policy for six months or more, this is considered a lapse in coverage.",
+          "field_type": "select",
+          "options": [
+            "Less than 1 year",
+            "1 – 2 years",
+            "3 – 5 years",
+            "6 – 10 years",
+            "More than 10 years"
+          ],
+          "has_tooltip": true,
+          "conditional_message": {
+            "condition": "value != Less than 1 year",
+            "message": "Exclusive savings: In celebration of your insurance history, you could be eligible to unlock a lower price."
+          }
         }
       ]
     },
     {
       "step": 4,
-      "title": "Your Quote & Next Steps",
-      "description": "Review your personalized quote and complete the sections below to finalize your coverage.",
-      "pricing_disclaimer": "The initial estimated prices displayed on this page are based on the summary information you provided, certain assumptions and preselected values (e.g. certain discounts for which you may be eligible) and are subject to change. When you complete your quote, we will provide a final price based on your unique situation and options for coverage and discounts, if applicable and subject to eligibility criteria. This initial estimated price is valid for 60 days.",
-      "sub_steps": [
+      "title": "Contact Details",
+      "header": "Last step before your price!",
+      "description": "A few contact details to save and send your quote.",
+      "questions": [
         {
-          "sub_step": "4.0",
-          "title": "Contact Details",
-          "order": 0,
-          "description": "A few contact details to save and send your quote.",
-          "field_type": "form",
-          "questions": [
-            {
-              "id": "email",
-              "order": 1,
-              "question": "What is your email address?",
-              "related_info": "We will only use your email to save or send you a copy of your quote.",
-              "field_type": "email"
-            },
-            {
-              "id": "phone_type",
-              "order": 2,
-              "question": "What type of phone number are you providing?",
-              "related_info": "Select the type of phone number: Mobile, Home, or Work.",
-              "field_type": "select",
-              "options": [
-                "Mobile",
-                "Home",
-                "Work"
-              ]
-            },
-            {
-              "id": "phone_number",
-              "order": 3,
-              "question": "What is your phone number?",
-              "related_info": "Enter your phone number in the format 555-000-0000.",
-              "field_type": "text"
-            },
-            {
-              "id": "postal_code",
-              "order": 4,
-              "question": "What is your postal code?",
-              "related_info": "Your postal code helps us calculate your rate accurately. Format: A1A 1A1.",
-              "field_type": "text"
-            },
-            {
-              "id": "years_at_address",
-              "order": 5,
-              "question": "How many years have you lived at your current address?",
-              "related_info": "Select a range: Less than 1 year, 1-2 years, 3-5 years, 6-10 years, or More than 10 years.",
-              "field_type": "select",
-              "options": [
-                "Less than 1 year",
-                "1 – 2 years",
-                "3 – 5 years",
-                "6 – 10 years",
-                "More than 10 years"
-              ]
-            }
-          ]
-        },
-        {
-          "sub_step": "4.1",
-          "title": "Your coverage",
+          "id": "email",
           "order": 1,
-          "description": "Personalized coverage tailored to your driving profile.",
-          "field_type": "display_with_action",
-          "coverage_items": [
-            {
-              "name": "Third party property damage protection",
-              "detail": "Section A: Civil Liability. Covered up to $1,000,000."
-            },
-            {
-              "name": "Accident and collision protection",
-              "detail": "Collision and upset. Deductible: $500."
-            },
-            {
-              "name": "Extra damage protection",
-              "detail": "Coverage applies to perils other than Collision or Upset. Deductible: $250."
-            },
-            {
-              "name": "Extra medical fund",
-              "detail": "Section B: Accident Benefits Insurance."
-            },
-            {
-              "name": "Unexpected expenses",
-              "detail": "Assessorial coverage for unexpected costs."
-            }
-          ],
-          "action": {
-            "label": "Customize",
-            "type": "button",
-            "description": "Adjust your coverage options and deductibles."
-          }
+          "question": "Email address",
+          "related_info": "We will only use your email to save or send you a copy of your quote.",
+          "question_information": "We will only use your email address to save or send you a copy of your quote.",
+          "field_type": "email"
         },
         {
-          "sub_step": "4.2",
-          "title": "Confirm driver's information",
+          "id": "phone_type",
           "order": 2,
-          "description": "Browse a few more questions to avoid any surprises.",
-          "field_type": "confirmation_flow",
-          "questions": [
-            {
-              "id": "accidents_tickets",
-              "order": 1,
-              "question": "Have you had any at-fault accidents or traffic tickets in the past 6 years?",
-              "related_info": "Your driving history including accidents and tickets affects your insurance premium. Please confirm the accuracy of your driving record.",
-              "field_type": "confirmation_flow"
-            },
-            {
-              "id": "lapse_in_coverage",
-              "order": 2,
-              "question": "Have you had a lapse in coverage?",
-              "related_info": "If you were not covered by a car insurance policy for six months or more, this is considered a lapse in coverage.",
-              "field_type": "radio",
-              "options": [
-                "No",
-                "Yes"
-              ],
-              "has_tooltip": true
-            },
-            {
-              "id": "education_discount",
-              "order": 3,
-              "question": "Do you have a university degree?",
-              "related_info": "Unlock a discount if you have a bachelor's, master's or doctorate degree. Group membership may be verified.",
-              "field_type": "radio",
-              "options": [
-                "No",
-                "Yes"
-              ],
-              "has_tooltip": true
-            }
-          ],
-          "action": {
-            "label": "Confirm",
-            "type": "button"
-          }
+          "question": "Phone type",
+          "related_info": "Select the type of phone number: Mobile, Home, or Work.",
+          "question_information": "Select the type of phone number you are providing so we can best reach you.",
+          "field_type": "select",
+          "options": ["Mobile", "Home", "Work"]
         },
         {
-          "sub_step": "4.3",
-          "title": "Review your car usage and discounts",
+          "id": "phone_number",
           "order": 3,
-          "description": "Don't forget to review your car usage and discounts.",
-          "field_type": "confirmation_flow",
-          "questions": [
-            {
-              "id": "business_use",
-              "order": 1,
-              "question": "Do you use your vehicle for business purposes?",
-              "related_info": "Business use of your vehicle may affect your coverage and premium.",
-              "field_type": "radio",
-              "options": [
-                "No",
-                "Yes"
-              ]
-            },
-            {
-              "id": "safe_driving_program",
-              "order": 2,
-              "question": "Would you like to enroll in a safe driving program?",
-              "related_info": "A safe driving program tracks your driving habits and can unlock additional discounts based on good driving behaviour.",
-              "field_type": "radio",
-              "options": [
-                "No",
-                "Yes"
-              ]
-            }
-          ],
-          "action": {
-            "label": "Add",
-            "type": "button"
-          }
+          "question": "Phone number",
+          "related_info": "Enter your phone number in the format 555-000-0000.",
+          "question_information": "Enter your phone number. Format: 555-000-0000.",
+          "field_type": "text"
         },
         {
-          "sub_step": "4.4",
-          "title": "Car + Home discount",
+          "id": "postal_code",
           "order": 4,
-          "description": "Bundle your car and home insurance to unlock additional savings.",
-          "field_type": "checkbox_or_button",
-          "questions": [
-            {
-              "id": "home_insurance_bundle",
-              "order": 1,
-              "question": "Would you like to add home insurance for an additional discount?",
-              "related_info": "Bundling your car and home insurance with belairdirect can give you a combined discount on both policies.",
-              "field_type": "button",
-              "action_label": "Add home insurance"
-            },
-            {
-              "id": "group_member",
-              "order": 2,
-              "question": "Are you a member of an eligible employee group, alumni association, or other organization?",
-              "related_info": "Group membership (employer, school, or association) may qualify you for an additional discount. Group membership may be verified.",
-              "field_type": "text",
-              "required": false
-            }
-          ]
+          "question": "Postal code",
+          "related_info": "Your postal code helps us calculate your rate accurately. Format: A1A 1A1.",
+          "question_information": "Your postal code is used to calculate location-based risk factors for your premium. Format: A1A 1A1.",
+          "field_type": "text"
         },
         {
-          "sub_step": "4.6",
-          "title": "Review & Submit",
-          "order": 6,
-          "description": "Please review and agree to the following before getting your price.",
-          "field_type": "agreements",
-          "questions": [
-            {
-              "id": "terms_agreement",
-              "order": 1,
-              "question": "Do you agree to the Terms of Use and use of personal information?",
-              "related_info": "I have read and agree to the Terms of Use and use of personal information. I understand that the total estimated price provided is not a guaranteed amount.",
-              "field_type": "agreement"
-            },
-            {
-              "id": "contact_permission",
-              "order": 2,
-              "question": "Do you give belairdirect permission to contact you about its products and services?",
-              "related_info": "I give belairdirect permission to contact me about its products and services by email, by phone or via other means. I am aware that I may withdraw my consent at any time.",
-              "field_type": "agreement"
-            },
-            {
-              "id": "soft_credit_check",
-              "order": 3,
-              "question": "Do you consent to a soft credit check to help determine your best available rate?",
-              "related_info": "A soft credit check does not impact your credit score and could save you up to 25% on your car insurance. You can opt out at any time.",
-              "field_type": "agreement"
-            }
-          ]
-        },
-        {
-          "sub_step": "4.5",
-          "title": "Next step",
+          "id": "years_at_address",
           "order": 5,
-          "description": "Your quote is ready. Continue to finalize your coverage and get insured.",
-          "field_type": "action",
-          "action": {
-            "label": "Continue",
-            "type": "button"
-          },
-          "contact": {
-            "phone": "1 833 273-3903",
-            "hours": {
-              "Monday_to_Friday": "8 a.m. to 8 p.m.",
-              "Saturday": "9 a.m. to 5 p.m.",
-              "Sunday": "Closed"
-            }
-          }
+          "question": "Number of years living at this address",
+          "related_info": "Select how long you have lived at your current address.",
+          "question_information": "Select the range that best describes how long you have lived at your current address.",
+          "field_type": "select",
+          "options": [
+            "Less than 1 year",
+            "1 – 2 years",
+            "3 – 5 years",
+            "6 – 10 years",
+            "More than 10 years"
+          ]
+        },
+        {
+          "id": "group_member",
+          "order": 6,
+          "question": "Are you a member of an eligible employee group, alumni association, or other organization?",
+          "related_info": "Group membership may qualify you for an additional discount. Group membership may be verified.",
+          "question_information": "If you are an employee or alumni of a partner organization, you may qualify for an additional group discount. Enter the name of your employer or association.",
+          "field_type": "text",
+          "section": "Exclusive discounts and perks",
+          "required": false
+        },
+        {
+          "id": "education_discount",
+          "order": 7,
+          "question": "Are you a university graduate?",
+          "related_info": "A university degree may qualify you for an education discount.",
+          "question_information": "Unlock a discount if you have a bachelor's, master's or doctorate degree.",
+          "field_type": "radio",
+          "options": ["No", "Yes"],
+          "section": "Exclusive discounts and perks",
+          "has_tooltip": true
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "title": "Review & Submit",
+      "header": "Almost there!",
+      "description": "Please review and agree to the following before getting your price.",
+      "action_label": "Get your price",
+      "questions": [
+        {
+          "id": "terms_agreement",
+          "order": 1,
+          "question": "Do you agree to the Terms of Use and use of personal information?",
+          "related_info": "I have read and agree to the Terms of Use and use of personal information as per the Privacy Promise. I understand that the total estimated price provided is not a guaranteed amount.",
+          "question_information": "I have read and agree to the Terms of Use and use of personal information as per the Privacy Promise. I understand that the total estimated price provided is not a guaranteed amount.",
+          "field_type": "agreement",
+          "agreementText": "I have read and agree to the Terms of Use and use of personal information as per the Privacy Promise. I understand that the total estimated price provided is not a guaranteed amount."
+        },
+        {
+          "id": "contact_permission",
+          "order": 2,
+          "question": "Do you give belairdirect permission to contact you about its products and services?",
+          "related_info": "I give belairdirect permission to contact me about its products and services by email, by phone or via other means. I am aware that I may withdraw my consent at any time.",
+          "question_information": "I give belairdirect permission to contact me about its products and services by email, by phone or via other means. I am aware that I may withdraw my consent at any time.",
+          "field_type": "agreement",
+          "agreementText": "I give belairdirect permission to contact me about its products and services by email, by phone or via other means. I am aware that I may withdraw my consent at any time."
+        },
+        {
+          "id": "soft_credit_check",
+          "order": 3,
+          "question": "Do you consent to a soft credit check to potentially save up to 25%?",
+          "related_info": "A soft credit check provides a basic overview of your credit report without impacting your score. With this information, your price will reflect our best offer and you could save up to 25% on your car insurance.",
+          "question_information": "A soft credit check provides a basic overview of your credit report without impacting your score. With this information, your price will reflect our best offer and you could save up to 25% on your car insurance with a soft credit check.\n\nBy selecting Yes, you agree that belairdirect may collect and use your credit information from consumer reporting agencies. If you become a customer, this information will be updated periodically to determine your future price (insurance premium) and any potential savings.\n\nFor more information, visit the Insurance Bureau of Canada's guide: All about credit information and insurance.",
+          "field_type": "agreement",
+          "agreementText": "Save up to 25% on all eligible products, without affecting your credit score in any way. Stay in control knowing you can opt out at any time. Don't worry, we'll check your score periodically to help ensure you receive the best price."
         }
       ]
     }
-  ]
+  ],
+  "price_page": {
+    "title": "Your quote is ready",
+    "disclaimer": "The initial estimated prices displayed on this page are based on the summary information you provided, certain assumptions and preselected values (e.g. certain discounts for which you may be eligible) and are subject to change. When you complete your quote, we will provide a final price based on your unique situation and options for coverage and discounts, if applicable and subject to eligibility criteria.",
+    "validity_note": "Price valid for 60 days from the date of this quote.",
+    "web_discount": "Web discount applied (up to 10%)",
+    "billing_options": ["Monthly", "Yearly"],
+    "tax_note": "+ 9% tax",
+    "coverage_items": [
+      {
+        "name": "Third party property damage protection",
+        "detail": "Section A: Civil Liability. Covered up to $1,000,000."
+      },
+      {
+        "name": "Accident and collision protection",
+        "detail": "Collision and upset. Deductible: $500."
+      },
+      {
+        "name": "Extra damage protection",
+        "detail": "Coverage applies to perils other than Collision or Upset. Deductible: $250."
+      },
+      {
+        "name": "Extra medical fund",
+        "detail": "Section B: Accident Benefits Insurance."
+      },
+      {
+        "name": "Accidental death benefits insurance",
+        "detail": "Coverage for accidental death resulting from a vehicle accident."
+      },
+      {
+        "name": "Unexpected expenses",
+        "detail": "Assessorial coverage for unexpected costs."
+      }
+    ],
+    "contact": {
+      "phone": "1 833 273-3903"
+    }
+  }
 }
